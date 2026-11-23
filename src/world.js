@@ -259,7 +259,7 @@ export function createWorld(scene) {
   things.add(wing);
   addCollider(wing.position.clone(), 1.3, 0.5);
 
-  createTown(scene, heightAt);
+  const town = createTown(scene, heightAt);
   scatterDecorations(things, makeRandom(2024));
 
   const spawnAway = toTown.clone().multiplyScalar(-0.6).addScaledVector(shipSide, -0.8).normalize();
@@ -273,8 +273,9 @@ export function createWorld(scene) {
     spawnFacing: towards(spawnDir, SHIP_DIR),
     townGate,
     townGateFacing: towards(townGate, TOWN_DIR),
-    update(t) {
+    update(t, dt) {
       ship.update(t);
+      town.update(dt);
       crystalMat.emissiveIntensity = 0.5 + Math.sin(t * 2) * 0.25;
     },
   };

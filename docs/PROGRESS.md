@@ -54,11 +54,20 @@
   - Buildings are gently bent to follow the planet's curve (`curveGeometry` / `warpPoint` in `src/geo.js`) so they sit flat on the ground and touch their neighbors. Every placement is checked so buildings never overlap each other or the streets.
   - `townWalkways` now also lists every building's door (`doors`: a spot outside and inside), for NPCs later.
 
+- **Furnished insides, hotel rooms, vault doors, shops ready for workers (2026-11-23)**
+  - Every building (except the bank's grand hall) has a wooden beamed ceiling at room height. Furniture kit + room layouts live in `src/interiors.js`: rugs, hanging lanterns, plants, paintings, candles, chairs, benches, fireplace, weapon rack, globe, and more.
+  - Hotels / boarding house: lobby with reception desk, a hallway, and separate numbered bedrooms (bed, nightstand, wardrobe, table, chair, rug, painting). The Inn & Hotel has 10 rooms.
+  - Hospital / clinic: beds with curtains, nightstands, doctor desks, medicine shelves, washbasins.
+  - Every shop is stocked with its own goods (bread and pies, potions, cloth rolls, vegetables, meat, cheese, candles, pots, books, toys, shoes, tools, parcels, herbs, planks).
+  - `src/services.js`: what every building offers and sells (prices in silver/gold). `buildingServices` in `src/town.js` gives each building its worker spots, customer spots, door, and hotel room spots, ready for alien workers.
+  - Bank vault doors are real swinging doors, closed by default. Only aliens can open/close them: `vault.open(alien)` / `vault.close(alien)` work only if `alien.isAlien` is true. Walking up to a closed vault shows a "locked" message.
+  - Test shortcut: `localhost:5180/#test-in=bakery` (any part of a building's name) starts you inside that building.
+
 ## Untested by a human
 - How the controls *feel* (speed, jump height, mouse sensitivity).
 - Camera can go inside trees or through house walls when it is right behind one.
 - How walking around inside houses feels.
-- Whether the bigger town lags on Philip's computer (about 480,000 triangles in the scene now).
+- Whether the bigger town lags on Philip's computer (about 630,000 triangles in the scene now).
 
 ## Next
 - Philip will add health and oxygen himself later.

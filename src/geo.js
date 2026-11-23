@@ -43,7 +43,9 @@ export function addCollider(pos, r, top, land = r + 0.2) {
 // Rectangular obstacle between two heights (absolute distances from the planet center).
 // ax/az are its sideways/forward directions; hx/hz are half its width/depth.
 export function addBox(pos, ax, az, hx, hz, bottom, top) {
-  colliders.push({ box: true, pos, dir: pos.clone().normalize(), ax, az, hx, hz, bottom, top });
+  const collider = { box: true, pos, dir: pos.clone().normalize(), ax, az, hx, hz, bottom, top, off: false };
+  colliders.push(collider);
+  return collider;
 }
 
 const _x = new THREE.Vector3();

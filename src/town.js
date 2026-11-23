@@ -3,6 +3,8 @@ import {
   RADIUS, SHIP_DIR, makeRandom, tangentBasis, towards, addCollider, addBox, placeAt, warpPoint,
   mat, mesh, box, grassColor, Batcher,
 } from './geo.js';
+import { furnish, CEILING } from './interiors.js';
+import { SERVICES } from './services.js';
 
 // The town sits on the far side of the planet from the ship.
 export const TOWN_DIR = new THREE.Vector3(0, Math.cos(2.6), Math.sin(2.6));
@@ -100,6 +102,8 @@ export const townWalkways = {
   stairs: AXES.map((axis) => ({ bottom: townPoint(axis, PLATEAU + STAIR_LEN), top: townPoint(axis, PLATEAU - STAIR_LEN) })),
   plaza: { center: TOWN_DIR.clone(), halfSize: PLATEAU - 1 },
   get doors() { return buildingDoors; },
+  get services() { return buildingServices; },
+  get vaults() { return vaultDoors; },
   point: (axisIndex, x, y) => townPoint(AXES[axisIndex], x, y),
 };
 export const TOWN_GATE = townPoint(AXES[0], 72);
@@ -129,6 +133,13 @@ const M = {
   gold: mat('#d4a017', { metalness: 0.6, roughness: 0.35, emissive: '#4a3500', emissiveIntensity: 0.4 }),
   silver: mat('#c9ced6', { metalness: 0.6, roughness: 0.3, emissive: '#2a2d33', emissiveIntensity: 0.4 }),
   sack: mat('#a08560'),
+  pot: mat('#9c5a3c'),
+  leaf: mat('#5f9e4f'),
+  carpet: mat('#8c2f2f'),
+  bread: mat('#c68b4e'),
+  meat: mat('#b5524a'),
+  cheese: mat('#f2c14e'),
+  leather: mat('#6b4226'),
 };
 
 const pick = (rand, list) => list[Math.floor(rand() * list.length)];
@@ -143,12 +154,12 @@ const big = (spec) => ({
   doorH: spec.doorH ?? 3.8,
 });
 const shop = (name, extra = {}) => big({ name, w: 6.5, d: 5, h: 3.6, awning: true, inside: 'shop', wall: M.planks[2], ...extra });
-const hotel = (name) => big({ name, w: 10, d: 6, h: 6.4, door: 3.2, doorH: 4.2, balcony: true, inside: 'beds', wall: M.planks[0] });
+const hotel = (name) => big({ name, w: 10, d: 6, h: 6.4, door: 3.2, doorH: 4.2, balcony: true, inside: 'hotel', wall: M.planks[0] });
 
 // Every one of these gets built first; then the rows fill up with EXTRA_SHOPS.
 const SHOP_TYPES = [
   hotel('INN & HOTEL'),
-  big({ name: 'HOSPITAL', w: 11, d: 6, h: 4.6, door: 3.4, doorH: 4.2, inside: 'beds', wall: M.stoneWall }),
+  big({ name: 'HOSPITAL', w: 11, d: 6, h: 4.6, door: 3.4, doorH: 4.2, inside: 'hospital', wall: M.stoneWall }),
   shop('GENERAL STORE', { w: 7.5, d: 5.5, h: 3.8, wall: M.plaster, frame: true }),
   big({ name: 'TAVERN', w: 9, d: 6, h: 4.2, inside: 'tavern', wall: M.planks[1] }),
   big({ name: 'BLACKSMITH', w: 7, d: 5.5, h: 3.6, door: 3.2, inside: 'forge', wall: M.stoneWall, chimney: true }),
@@ -160,7 +171,7 @@ const SHOP_TYPES = [
 const EXTRA_SHOPS = [
   shop('GROCER', { wall: M.planks[1] }),
   shop('POTION SHOP', { wall: M.plaster, frame: true }),
-  big({ name: 'CLINIC', w: 8, d: 5.5, h: 3.8, inside: 'beds', wall: M.stoneWall }),
+  big({ name: 'CLINIC', w: 8, d: 5.5, h: 3.8, inside: 'hospital', wall: M.stoneWall }),
   shop('CARPENTER', { wall: M.planks[0], awning: false }),
   shop('BUTCHER', { wall: M.plasterWarm, frame: true }),
   shop('TOY SHOP', { wall: M.planks[2] }),
@@ -173,7 +184,7 @@ const EXTRA_SHOPS = [
   shop('HERBALIST', { w: 4, d: 5.7, h: 3.4, wall: M.plaster, frame: true, awning: false }),
   shop('SHOEMAKER', { w: 4, d: 5.7, h: 3.4, wall: M.planks[1], awning: false }),
   shop('CHEESE SHOP', { w: 4, d: 5.7, h: 3.4, wall: M.plasterWarm, frame: true, awning: false }),
-  shop('STABLE', { w: 4.2, d: 5.7, h: 3.4, wall: M.planks[0], awning: false, inside: 'none' }),
+  shop('STABLE', { w: 4.2, d: 5.7, h: 3.4, wall: M.planks[0], awning: false, inside: 'stable' }),
 ];
 
 function signMaterial(text, w, h, colors = {}) {
@@ -338,81 +349,20 @@ function buildBuilding(rand, spec) {
   }
 
   const floorY = BASE + 0.06;
-  const entrance = d / 2 - 4; // keep the area inside the door clear
-  const aisle = 2.5;
-  const inside = {
-    shop() {
-      solid(box(w - 2, 4.4, 0.7), M.woodDark, 0, floorY + 2.2, -d / 2 + 0.85, floorY + 4.4);
-      for (const sx of [-1, 1]) solid(box(0.7, 4.4, d - 7), M.woodDark, sx * (w / 2 - 0.85), floorY + 2.2, -1.5, floorY + 4.4);
-      for (let x = -w / 2 + 1.6; x < w / 2 - 1.4; x += 0.8) {
-        for (const y of [1.2, 2.4, 3.6]) {
-          if (rand() < 0.75) part(box(0.5, 0.45, 0.35), pick(rand, M.cloth), x, floorY + y, -d / 2 + 1.1);
-        }
-      }
-      solid(box(Math.min(8, w * 0.4), 1.1, 1), M.wood, 0, floorY + 0.55, -d / 2 + 4, floorY + 1.1);
-      for (let x = -w / 2 + 4; x <= w / 2 - 4; x += 5) {
-        if (Math.abs(x) < aisle) continue;
-        for (let z = -d / 2 + 7.5; z < entrance; z += 4) {
-          solid(box(2.6, 1, 1.5), M.wood, x, floorY + 0.5, z, floorY + 1);
-          part(box(0.5, 0.4, 0.5), pick(rand, M.cloth), x - 0.6, floorY + 1.2, z);
-          part(box(0.5, 0.4, 0.5), pick(rand, M.cloth), x + 0.6, floorY + 1.2, z);
-        }
-      }
-    },
-    beds() {
-      for (let x = -w / 2 + 1.6; x <= w / 2 - 1.6; x += 2.4) {
-        if (Math.abs(x) < aisle) continue;
-        for (let z = -d / 2 + 1.6; z < entrance; z += 3) {
-          solid(box(1.2, 0.5, 2.2), M.wood, x, floorY + 0.25, z, floorY + 0.6);
-          part(box(1.05, 0.12, 1.7), M.linen, x, floorY + 0.56, z + 0.2);
-          part(box(0.8, 0.18, 0.4), M.linen, x, floorY + 0.6, z - 0.8);
-        }
-      }
-    },
-    tavern() {
-      solid(box(w * 0.5, 1.2, 0.9), M.woodDark, 0, floorY + 0.6, -d / 2 + 2.6, floorY + 1.2);
-      for (let x = -w / 4; x <= w / 4; x += 1.1) part(new THREE.CylinderGeometry(0.45, 0.45, 1, 10), M.wood, x, floorY + 0.5, -d / 2 + 0.9);
-      for (let x = -w / 2 + 3; x <= w / 2 - 3; x += 4.5) {
-        if (Math.abs(x) < aisle) continue;
-        for (let z = -d / 2 + 6; z < entrance; z += 4) {
-          solid(box(1.6, 0.12, 1.6), M.wood, x, floorY + 0.9, z, floorY + 0.96);
-          part(box(0.25, 0.85, 0.25), M.woodDark, x, floorY + 0.42, z);
-          for (const [sx, sz] of [[-1.2, 0], [1.2, 0], [0, -1.2], [0, 1.2]]) {
-            part(new THREE.CylinderGeometry(0.3, 0.3, 0.55, 8), M.wood, x + sx, floorY + 0.28, z + sz);
-          }
-        }
-      }
-    },
-    forge() {
-      for (const x of [-w / 4, w / 4]) {
-        solid(box(3.2, 1.3, 2.4), M.stone, x, floorY + 0.65, -d / 2 + 1.8, floorY + 1.3);
-        part(box(2.6, 0.12, 1.9), M.flame, x, floorY + 1.34, -d / 2 + 1.8);
-        part(box(2.4, 3, 1.8), M.stone, x, floorY + 5.5, -d / 2 + 1.5);
-      }
-      for (let x = -w / 2 + 3.5; x <= w / 2 - 3.5; x += 5) {
-        if (Math.abs(x) < aisle) continue;
-        for (let z = -d / 2 + 6; z < entrance; z += 4.5) {
-          solid(new THREE.CylinderGeometry(0.4, 0.45, 0.55, 8), M.woodDark, x, floorY + 0.27, z, floorY + 0.85);
-          part(box(1, 0.3, 0.45), M.iron, x, floorY + 0.7, z);
-        }
-      }
-    },
-    books() {
-      for (let x = -w / 2 + 2; x <= w / 2 - 2; x += 3) {
-        if (Math.abs(x) < aisle) continue;
-        const len = d * 0.55;
-        const z = -d / 2 + 1 + len / 2;
-        solid(box(0.7, 4, len), M.woodDark, x, floorY + 2, z, floorY + 4);
-        for (let y = 0.6; y < 3.8; y += 0.65) {
-          for (const sx of [-1, 1]) part(box(0.08, 0.45, len - 0.3), pick(rand, M.cloth), x + sx * 0.38, floorY + y, z);
-        }
-      }
-      for (const x of [-w / 4, w / 4]) solid(box(3, 0.12, 1.4), M.wood, x, floorY + 0.9, entrance - 1, floorY + 0.96);
-    },
+  if (spec.ceiling !== false) {
+    const y = floorY + CEILING;
+    part(box(w - 2 * T, 0.3, d - 2 * T), M.floor, 0, y + 0.15, 0);
+    for (const z of spread(d, 3, 0.6)) part(box(w - 2 * T, 0.3, 0.3), M.timber, 0, y - 0.15, z);
+    boxes.push({ x: 0, z: 0, hx: w / 2 - T, hz: d / 2 - T, y0: y, y1: y + 0.3 });
+  }
+  const ctx = {
+    part, solid, rand, M, w, d, floorY, stations: [], rooms: [],
+    stock: SERVICES[spec.name]?.stock,
+    label: (text) => signMaterial(text, 0.6, 0.38),
   };
-  inside[spec.inside]?.();
+  furnish(spec.inside, ctx);
 
-  return { obj: g, boxes, part, solid, top, BASE };
+  return { obj: g, boxes, part, solid, top, BASE, ctx };
 }
 
 const BANK = { w: 13 * SCALE, d: 9 * SCALE, h: 7 * SCALE, portico: 7, back: 3.5 };
@@ -420,7 +370,7 @@ const BANK = { w: 13 * SCALE, d: 9 * SCALE, h: 7 * SCALE, portico: 7, back: 3.5 
 function buildBank(rand) {
   const { w, d } = BANK;
   const bank = buildBuilding(rand, {
-    name: 'BANK', sign: false, w, d, h: BANK.h, door: 5, doorH: 7, base: 1.2, wall: M.bankStone, roof: M.slate,
+    name: 'BANK', sign: false, ceiling: false, w, d, h: BANK.h, door: 5, doorH: 7, base: 1.2, wall: M.bankStone, roof: M.slate,
   });
   const { part, solid, boxes, top, BASE } = bank;
   const front = d / 2;
@@ -465,6 +415,7 @@ function buildBank(rand) {
 
   // Three vault rooms of different sizes along the back wall, each full of coins.
   const back = -d / 2 + 0.4;
+  bank.vaults = [];
   const stack = (material, x, z, coins) => part(new THREE.CylinderGeometry(0.17, 0.17, coins * 0.06, 10), material, x, floorY + coins * 0.03, z);
   const heap = (material, x, z, radius, height) => part(new THREE.ConeGeometry(radius, height, 9), material, x, floorY + height / 2, z);
   const chest = (x, z) => {
@@ -502,10 +453,7 @@ function buildBank(rand) {
     part(box(width + 0.2, 0.4, depth + 0.2), M.iron, cx, floorY + wallH + 0.2, back + depth / 2);
     boxes.push({ x: cx, z: back + depth / 2, hx: width / 2, hz: depth / 2, y0: floorY + doorH, y1: floorY + wallH + 0.4 });
     for (const sx of [-1, 1]) part(box(0.2, doorH, 0.2), M.gold, cx + sx * (doorW / 2 + 0.1), floorY + doorH / 2, frontZ + 0.02);
-    const door = part(new THREE.CylinderGeometry(1.6, 1.6, 0.35, 20), M.iron, cx + doorW / 2 + 0.2, floorY + 1.8, frontZ + 1.7);
-    door.rotation.z = Math.PI / 2;
-    const wheel = part(new THREE.CylinderGeometry(0.55, 0.55, 0.15, 8), M.gold, cx + doorW / 2 + 0.45, floorY + 1.8, frontZ + 1.7);
-    wheel.rotation.z = Math.PI / 2;
+    bank.vaults.push({ name: ['SMALL', 'MEDIUM', 'LARGE'][bank.vaults.length], x: cx, z: frontZ, doorW, doorH, floorY });
     const stacks = (count, goldShare) => {
       for (let i = 0; i < count; i++) {
         const x = x0 + 1 + rand() * (width - 2);
@@ -538,6 +486,7 @@ function buildBank(rand) {
     for (const dx of [-7.5, 7.5]) chest(cx + dx, back + 9.3);
     stacks(140, 0.7);
   });
+  furnish('bankLobby', bank.ctx);
   return bank;
 }
 
@@ -779,10 +728,99 @@ const lights = [];
 export const placedBuildings = [];
 // For each building: a spot outside its front door and a spot just inside (used by tests, and by NPCs later).
 export const buildingDoors = [];
+// For each building: what it offers (from services.js) and where workers and customers stand.
+export const buildingServices = [];
 
-function recordDoor(obj, name, outsideZ, insideZ) {
-  const at = (z) => warpPoint(obj.localToWorld(new THREE.Vector3(0, 0, z)), obj.position).normalize();
-  buildingDoors.push({ name, outside: at(outsideZ), inside: at(insideZ) });
+function recordDoor(obj, name, outsideZ, insideZ, stations = [], rooms = []) {
+  const at = (x, z) => warpPoint(obj.localToWorld(new THREE.Vector3(x, 0, z)), obj.position).normalize();
+  const door = { name, outside: at(0, outsideZ), inside: at(0, insideZ) };
+  buildingDoors.push(door);
+  buildingServices.push({
+    name,
+    ...SERVICES[name],
+    door,
+    stations: stations.map((s) => ({ worker: at(...s.worker), customer: at(...s.customer) })),
+    rooms: rooms.map((r) => ({ number: r.number, center: at(...r.center), door: at(...r.door) })),
+  });
+}
+
+// Vault doors move, so they stay as their own objects. They start closed, and only aliens can open them:
+// vault.open(alien) / vault.close(alien) work only when `alien.isAlien` is true.
+export const vaultDoors = [];
+const movers = [];
+const VAULT_OPEN = Math.PI / 2;
+
+function makeVaultDoor(width, height) {
+  const pivot = new THREE.Group();
+  const door = new THREE.Group();
+  door.position.x = width / 2;
+  door.add(
+    mesh(box(width + 0.3, height + 0.2, 0.5), M.iron, 0, height / 2, 0),
+    mesh(box(width - 0.3, height - 0.4, 0.08), M.slate, 0, height / 2, 0.29),
+  );
+  const wheel = mesh(new THREE.CylinderGeometry(0.6, 0.6, 0.15, 12), M.gold, 0, height * 0.5, 0.38);
+  wheel.rotation.x = Math.PI / 2;
+  door.add(wheel, mesh(box(1.4, 0.12, 0.1), M.gold, 0, height * 0.5, 0.48), mesh(box(0.12, 1.4, 0.1), M.gold, 0, height * 0.5, 0.48));
+  for (const sx of [-1, 1]) {
+    for (const sy of [0.12, 0.88]) door.add(mesh(box(0.2, 0.2, 0.1), M.gold, sx * (width / 2 - 0.15), height * sy, 0.3));
+  }
+  for (const sy of [0.2, 0.8]) door.add(mesh(box(0.25, 0.5, 0.6), M.gold, -width / 2 - 0.05, height * sy, 0));
+  pivot.add(door);
+  return pivot;
+}
+
+function addVaultDoors(bank) {
+  const at = (x, z) => warpPoint(bank.obj.localToWorld(new THREE.Vector3(x, 0, z)), bank.obj.position);
+  const tangent = (a, b, up) => {
+    const v = b.sub(a);
+    return v.addScaledVector(up, -v.dot(up)).normalize();
+  };
+  for (const v of bank.vaults) {
+    const z = v.z - 0.25;
+    const hingeX = v.x - v.doorW / 2;
+    const hinge = at(hingeX, z);
+    const up = hinge.clone().normalize();
+    const radius = bank.obj.position.length() + v.floorY;
+    const pivot = makeVaultDoor(v.doorW, v.doorH);
+    placeAt(pivot, up, tangent(at(hingeX, z - 0.5), at(hingeX, z + 0.5), up), radius);
+    const closed = pivot.quaternion.clone();
+    movers.push(pivot);
+
+    const center = at(v.x, z);
+    const cUp = center.clone().normalize();
+    const collider = addBox(
+      center, tangent(at(v.x - 0.5, z), at(v.x + 0.5, z), cUp), tangent(at(v.x, z - 0.5), at(v.x, z + 0.5), cUp),
+      v.doorW / 2, 0.3, radius - 2, radius + v.doorH,
+    );
+    const swing = new THREE.Quaternion();
+    const yAxis = new THREE.Vector3(0, 1, 0);
+    vaultDoors.push({
+      name: `${v.name} VAULT`,
+      position: center.clone().setLength(radius),
+      angle: 0,
+      target: 0,
+      get isOpen() {
+        return this.target > 0;
+      },
+      open(by) {
+        if (!by?.isAlien) return false;
+        this.target = VAULT_OPEN;
+        return true;
+      },
+      close(by) {
+        if (!by?.isAlien) return false;
+        this.target = 0;
+        collider.off = false;
+        return true;
+      },
+      update(dt) {
+        const step = 1.2 * dt;
+        this.angle += THREE.MathUtils.clamp(this.target - this.angle, -step, step);
+        pivot.quaternion.copy(closed).multiply(swing.setFromAxisAngle(yAxis, -this.angle));
+        if (this.target > 0 && this.angle > 0.4) collider.off = true;
+      },
+    });
+  }
 }
 
 function buildPlaza(batch, rand) {
@@ -790,6 +828,7 @@ function buildPlaza(batch, rand) {
   place(bank.obj, townPoint(AXES[0], -BANK.back), SHIP_DIR);
   batch.add(bank.obj, true);
   addBoxesFrom(bank.obj, bank.boxes, true);
+  addVaultDoors(bank);
   for (const spot of bank.lights) {
     const light = new THREE.PointLight('#ffc477', 90, 34, 1.2);
     light.position.copy(warpPoint(bank.obj.localToWorld(spot.clone()), bank.obj.position));
@@ -799,7 +838,7 @@ function buildPlaza(batch, rand) {
   const bankDepth = BANK.d + BANK.portico + 1.6;
   const bankMiddle = townPoint(AXES[0], -BANK.back + (BANK.portico + 1.6) / 2);
   footprints.push(footprintAt(bankMiddle, townPoint(AXES[0], 40), BANK.w + 0.6, bankDepth));
-  recordDoor(bank.obj, 'BANK', BANK.d / 2 + BANK.portico + 3, BANK.d / 2 - 4);
+  recordDoor(bank.obj, 'BANK', BANK.d / 2 + BANK.portico + 3, BANK.d / 2 - 4, bank.ctx.stations);
 
   const well = place(makeWell(), townPoint(AXES[2], 25), TOWN_DIR);
   batch.add(well);
@@ -883,7 +922,7 @@ function placeBuilding(batch, rand, spot, spec) {
   addBoxesFrom(building.obj, building.boxes, true);
   footprints.push(spot.f);
   placedBuildings.push(spec.name);
-  recordDoor(building.obj, spec.name, spec.d / 2 + 2, spec.d / 2 - 3);
+  recordDoor(building.obj, spec.name, spec.d / 2 + 2, spec.d / 2 - 3, building.ctx.stations, building.ctx.rooms);
 }
 
 function placeProp(batch, rand, dir) {
@@ -971,5 +1010,10 @@ export function createTown(scene, heightAt) {
   buildLanterns(batch);
   batch.build(town);
   lights.forEach((light) => town.add(light));
-  return { buildings: placedBuildings.length };
+  movers.forEach((obj) => town.add(obj));
+  return {
+    update(dt) {
+      vaultDoors.forEach((vault) => vault.update(dt));
+    },
+  };
 }

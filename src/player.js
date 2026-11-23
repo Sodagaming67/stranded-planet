@@ -57,7 +57,7 @@ export function createPlayer(scene, spawnDir, facingDir) {
   scene.add(model);
 
   const up = spawnDir.clone().normalize();
-  const position = up.clone().multiplyScalar(RADIUS + heightAt(up) + 0.5);
+  const position = up.clone().multiplyScalar(RADIUS + heightAt(up) + 1.5);
   const velocity = new THREE.Vector3();
   const facing = facingDir.clone();
   let vUp = 0;
@@ -136,7 +136,7 @@ export function createPlayer(scene, spawnDir, facingDir) {
     let radius = position.length();
     const stepUp = grounded ? 0.5 : 0.05;
     for (const c of colliders) {
-      if (c.dir.dot(up) < NEARBY || lastRadius >= c.top - stepUp) continue;
+      if (c.off || c.dir.dot(up) < NEARBY || lastRadius >= c.top - stepUp) continue;
       offsetFrom(c);
       if (lastRadius + HEIGHT <= c.bottom + 0.05) {
         if (radius + HEIGHT > c.bottom && inside(c, 0)) {
@@ -152,7 +152,7 @@ export function createPlayer(scene, spawnDir, facingDir) {
     up.copy(position).normalize();
     let ground = RADIUS + heightAt(up);
     for (const c of colliders) {
-      if (c.dir.dot(up) < NEARBY || lastRadius < c.top - stepUp) continue;
+      if (c.off || c.dir.dot(up) < NEARBY || lastRadius < c.top - stepUp) continue;
       offsetFrom(c);
       if (c.box ? inside(c, 0.1) : push.length() < c.land) ground = Math.max(ground, c.top);
     }

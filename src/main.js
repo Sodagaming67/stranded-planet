@@ -3,12 +3,14 @@ import { createWorld, RADIUS, heightAt } from './world.js';
 import { createPlayer } from './player.js';
 import { readInput } from './input.js';
 import { wallet } from './money.js';
+import { vaultDoors, buildingServices } from './town.js';
+import { towards } from './geo.js';
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
 document.body.appendChild(renderer.domElement);
@@ -29,12 +31,21 @@ sun.shadow.normalBias = 0.05;
 scene.add(sun, sun.target);
 
 const world = createWorld(scene);
+// Test shortcuts: #test-town starts at the town gate; #test-in=BAKERY starts just inside that building.
+const lettersOf = (text) => text.toUpperCase().replace(/[^A-Z]/g, '');
+const insideName = lettersOf(decodeURIComponent(location.hash.match(/^#test-in=(.+)$/)?.[1] ?? ''));
+const insideOf = insideName ? buildingServices.find((b) => lettersOf(b.name).includes(insideName)) : undefined;
 const atTown = location.hash === '#test-town';
-const player = atTown ? createPlayer(scene, world.townGate, world.townGateFacing) : createPlayer(scene, world.spawnDir, world.spawnFacing);
+const start = insideOf
+  ? { dir: insideOf.door.inside, facing: towards(insideOf.door.inside, insideOf.stations[0]?.worker ?? insideOf.door.inside) }
+  : atTown
+    ? { dir: world.townGate, facing: world.townGateFacing }
+    : { dir: world.spawnDir, facing: world.spawnFacing };
+const player = createPlayer(scene, start.dir, start.facing);
 
-const camForward = (atTown ? world.townGateFacing : world.spawnFacing).clone();
+const camForward = start.facing.clone();
 let pitch = 0.25;
-let distance = 9;
+let distance = insideOf ? 3.5 : 9;
 const up = new THREE.Vector3();
 const lookAt = new THREE.Vector3();
 const sunSide = new THREE.Vector3();
@@ -69,6 +80,18 @@ function followPlayer() {
 
 const healthFill = document.getElementById('health-fill');
 const healthText = document.getElementById('health-text');
+const notice = document.getElementById('notice');
+let shownNotice = '';
+
+function updateNotice() {
+  const vault = vaultDoors.find((v) => !v.isOpen && v.position.distanceTo(player.position) < 3.5);
+  const text = vault ? `The ${vault.name.toLowerCase()} is locked. Only the aliens who work at the bank can open it.` : '';
+  if (text === shownNotice) return;
+  shownNotice = text;
+  notice.textContent = text;
+  notice.style.display = text ? 'block' : 'none';
+}
+
 const goldCount = document.getElementById('gold-count');
 const silverCount = document.getElementById('silver-count');
 let shownHealth = -1;
@@ -115,7 +138,8 @@ renderer.setAnimationLoop((now) => {
   turnCamera(input);
   player.update(dt, input, camForward);
   followPlayer();
-  world.update(now / 1000);
+  world.update(now / 1000, dt);
   updateHud();
+  updateNotice();
   renderer.render(scene, camera);
 });
