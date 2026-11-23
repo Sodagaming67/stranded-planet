@@ -63,6 +63,12 @@
   - Bank vault doors are real swinging doors, closed by default. Only aliens can open/close them: `vault.open(alien)` / `vault.close(alien)` work only if `alien.isAlien` is true. Walking up to a closed vault shows a "locked" message.
   - Test shortcut: `localhost:5180/#test-in=bakery` (any part of a building's name) starts you inside that building.
 
+- **Ready for aliens (2026-11-23)** - see `docs/aliens-setup.md`
+  - Game clock (`src/clock.js`) shown under the money: 1 real minute = 1 game hour.
+  - Opening hours and alien job titles for every building; 18 jobs waiting for aliens.
+  - Rules in `src/economy.js`: aliens sell items, heal, rent hotel rooms, run the bank. Hotels charge every night at 9 PM; no coins = you lose the room. Only an alien who works there can serve, only while open. Messages pop up on screen.
+  - Tested with pretend aliens (scratch test): renting, nightly charges, eviction, shopping, healing, bank swap/deposit, closed shop.
+
 ## Untested by a human
 - How the controls *feel* (speed, jump height, mouse sensitivity).
 - Camera can go inside trees or through house walls when it is right behind one.

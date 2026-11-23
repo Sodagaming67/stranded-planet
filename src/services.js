@@ -129,3 +129,59 @@ export const SERVICES = {
     sells: [item('Deposit coins', 0, 0), item('Withdraw coins', 0, 0), item('Swap 10 silver for 1 gold', 0, 0)],
   },
 };
+
+// When each building is open (24-hour clock). Anything not listed is open 8:00 to 20:00.
+const HOURS = {
+  'INN & HOTEL': [0, 24],
+  HOTEL: [0, 24],
+  'BOARDING HOUSE': [0, 24],
+  HOSPITAL: [0, 24],
+  CLINIC: [0, 24],
+  TAVERN: [10, 24],
+  BANK: [9, 17],
+  LIBRARY: [9, 19],
+};
+
+// The job an alien has when it works at each building. Anything not listed is a Shopkeeper.
+const ROLES = {
+  'GENERAL STORE': 'Storekeeper', BAKERY: 'Baker', GROCER: 'Grocer', BUTCHER: 'Butcher', 'CHEESE SHOP': 'Cheesemaker',
+  'POTION SHOP': 'Potion brewer', TAILOR: 'Tailor', SHOEMAKER: 'Shoemaker', HERBALIST: 'Herbalist', 'TOY SHOP': 'Toymaker',
+  'CANDLE MAKER': 'Candle maker', POTTER: 'Potter', CARPENTER: 'Carpenter', 'FARM SUPPLY': 'Farm supplier',
+  'BOOK SHOP': 'Bookseller', 'POST OFFICE': 'Postmaster', BLACKSMITH: 'Blacksmith', TAVERN: 'Tavern keeper',
+  'INN & HOTEL': 'Innkeeper', HOTEL: 'Innkeeper', 'BOARDING HOUSE': 'Landlord', HOSPITAL: 'Doctor', CLINIC: 'Nurse',
+  LIBRARY: 'Librarian', STABLE: 'Stable hand', BANK: 'Bank teller',
+};
+
+// What some paid services do (everything else just goes into your bag).
+const EFFECTS = {
+  'Room for one night': { type: 'room' },
+  'Check-up': { type: 'heal', amount: 20 },
+  'Full healing': { type: 'heal', amount: 100 },
+  Bandage: { type: 'heal', amount: 15 },
+  Healing: { type: 'heal', amount: 50 },
+  'Hot meal': { type: 'eat' },
+  'Bowl of stew': { type: 'eat' },
+  'Moonberry juice': { type: 'eat' },
+  Breakfast: { type: 'eat' },
+  'Send a letter': { type: 'service' },
+  'Send a parcel': { type: 'service' },
+  'Fix boots': { type: 'service' },
+  'Fix a tool': { type: 'service' },
+  Repair: { type: 'service' },
+  'Patch your space suit': { type: 'service' },
+  'Ride across town': { type: 'service' },
+  'Deposit coins': { type: 'bank' },
+  'Withdraw coins': { type: 'bank' },
+  'Swap 10 silver for 1 gold': { type: 'bank' },
+};
+
+for (const [name, info] of Object.entries(SERVICES)) {
+  info.hours = HOURS[name] ?? [8, 20];
+  info.role = ROLES[name] ?? 'Shopkeeper';
+  for (const offer of info.sells) offer.effect = EFFECTS[offer.name] ?? { type: 'item' };
+}
+
+export function isOpenAt(building, hour) {
+  const [open, close] = SERVICES[building]?.hours ?? [0, 0];
+  return hour >= open && hour < close;
+}

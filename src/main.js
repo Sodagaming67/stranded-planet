@@ -5,6 +5,8 @@ import { readInput } from './input.js';
 import { wallet } from './money.js';
 import { vaultDoors, buildingServices } from './town.js';
 import { towards } from './geo.js';
+import { clock } from './clock.js';
+import { setPlayer, onMessage } from './economy.js';
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -81,11 +83,20 @@ function followPlayer() {
 const healthFill = document.getElementById('health-fill');
 const healthText = document.getElementById('health-text');
 const notice = document.getElementById('notice');
+const clockText = document.getElementById('clock');
 let shownNotice = '';
+let message = '';
+let messageUntil = 0;
+setPlayer(player);
+onMessage((text) => {
+  message = text;
+  messageUntil = performance.now() + 6000;
+});
 
 function updateNotice() {
   const vault = vaultDoors.find((v) => !v.isOpen && v.position.distanceTo(player.position) < 3.5);
-  const text = vault ? `The ${vault.name.toLowerCase()} is locked. Only the aliens who work at the bank can open it.` : '';
+  let text = vault ? `The ${vault.name.toLowerCase()} is locked. Only the aliens who work at the bank can open it.` : '';
+  if (performance.now() < messageUntil) text = message;
   if (text === shownNotice) return;
   shownNotice = text;
   notice.textContent = text;
@@ -109,6 +120,8 @@ function updateHud() {
     goldCount.textContent = wallet.gold;
     silverCount.textContent = wallet.silver;
   }
+  const time = clock.text();
+  if (clockText.textContent !== time) clockText.textContent = time;
 }
 
 const hint = document.getElementById('hint');
@@ -131,13 +144,14 @@ window.addEventListener('resize', () => {
 
 let last = performance.now();
 renderer.setAnimationLoop((now) => {
-  const dt = Math.min((now - last) / 1000, 0.05);
+  const dt = THREE.MathUtils.clamp((now - last) / 1000, 0, 0.05);
   last = now;
   const input = readInput();
   if (!isPlaying()) return;
   turnCamera(input);
   player.update(dt, input, camForward);
   followPlayer();
+  clock.update(dt);
   world.update(now / 1000, dt);
   updateHud();
   updateNotice();
