@@ -5,8 +5,9 @@ const SUIT = '#f1f1f1';
 const ACCENT = '#ff7b29';
 const WALK_SPEED = 6;
 const RUN_SPEED = 11;
-const JUMP_SPEED = 9;
-const GRAVITY = 25;
+const JUMP_SPEED = 16;
+const GRAVITY = 20;
+const MAX_HEALTH = 100;
 
 function part(w, h, d, color, x, y, z, extra = {}) {
   const m = new THREE.Mesh(
@@ -57,6 +58,7 @@ export function createPlayer(scene, spawnDir, facingDir) {
   let vUp = 0;
   let grounded = false;
   let phase = 0;
+  let lastRadius = position.length();
 
   const wish = new THREE.Vector3();
   const right = new THREE.Vector3();
@@ -75,7 +77,7 @@ export function createPlayer(scene, spawnDir, facingDir) {
     wish.copy(camForward).multiplyScalar(input.forward).addScaledVector(right, input.right);
     if (wish.lengthSq() > 1) wish.normalize();
     wish.multiplyScalar(input.run ? RUN_SPEED : WALK_SPEED);
-    velocity.lerp(wish, 1 - Math.exp(-(grounded ? 12 : 3) * dt));
+    velocity.lerp(wish, 1 - Math.exp(-(grounded ? 12 : 5) * dt));
 
     if (input.jump && grounded) {
       vUp = JUMP_SPEED;
@@ -85,16 +87,25 @@ export function createPlayer(scene, spawnDir, facingDir) {
     position.addScaledVector(velocity, dt).addScaledVector(up, vUp * dt);
 
     up.copy(position).normalize();
+    const radius = position.length();
+    const stepUp = grounded ? 0.5 : 0.05;
     for (const c of colliders) {
+      if (lastRadius >= c.top - stepUp) continue;
       push.subVectors(position, c.pos);
       push.addScaledVector(up, -push.dot(up));
       const d = push.length();
       const min = c.r + 0.4;
-      if (d < min && d > 1e-4) position.addScaledVector(push, (min - d) / d);
+      if (radius < c.top && d < min && d > 1e-4) position.addScaledVector(push, (min - d) / d);
     }
 
     up.copy(position).normalize();
-    const ground = RADIUS + heightAt(up);
+    let ground = RADIUS + heightAt(up);
+    for (const c of colliders) {
+      if (lastRadius < c.top - stepUp) continue;
+      push.subVectors(position, c.pos);
+      push.addScaledVector(up, -push.dot(up));
+      if (push.length() < c.land) ground = Math.max(ground, c.top);
+    }
     const above = position.length() - ground;
     if (above <= 0 || (grounded && vUp <= 0 && above < 0.4)) {
       position.setLength(ground);
@@ -104,6 +115,7 @@ export function createPlayer(scene, spawnDir, facingDir) {
       grounded = false;
     }
     velocity.addScaledVector(up, -velocity.dot(up));
+    lastRadius = position.length();
 
     const speed = velocity.length();
     facing.addScaledVector(up, -facing.dot(up)).normalize();
@@ -132,5 +144,11 @@ export function createPlayer(scene, spawnDir, facingDir) {
     }
   }
 
-  return { position, update, get grounded() { return grounded; } };
+  return {
+    position,
+    update,
+    health: MAX_HEALTH,
+    maxHealth: MAX_HEALTH,
+    get grounded() { return grounded; },
+  };
 }

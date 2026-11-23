@@ -5,6 +5,10 @@ export const SHIP_DIR = new THREE.Vector3(0, 1, 0);
 export const TOWN_DIR = new THREE.Vector3(0, Math.cos(0.9), Math.sin(0.9));
 export const colliders = [];
 
+function addCollider(pos, r, top, land = r + 0.2) {
+  colliders.push({ pos, r, top: pos.length() + top, land });
+}
+
 const UP = new THREE.Vector3(0, 1, 0);
 const SIDE = new THREE.Vector3(1, 0, 0);
 
@@ -150,7 +154,7 @@ function makeTree(rand) {
   g.add(mesh(trunkGeo, trunkMat, 0, 1.2, 0), top, side);
   const s = 0.8 + rand() * 0.6;
   g.scale.setScalar(s);
-  return { obj: g, r: 0.45 * s };
+  return { obj: g, r: 0.45 * s, top: 4 * s, land: 1.1 * s };
 }
 
 const rockGeo = new THREE.DodecahedronGeometry(0.8, 0);
@@ -159,10 +163,11 @@ const rockMat = mat('#7d7590');
 function makeRock(rand) {
   const sx = 0.7 + rand() * 0.8;
   const rock = mesh(rockGeo, rockMat, 0, 0.2, 0);
-  rock.scale.set(sx, 0.5 + rand() * 0.5, 0.7 + rand() * 0.8);
+  const sy = 0.5 + rand() * 0.5;
+  rock.scale.set(sx, sy, 0.7 + rand() * 0.8);
   rock.rotation.y = rand() * Math.PI;
   const g = new THREE.Group().add(rock);
-  return { obj: g, r: 0.75 * sx };
+  return { obj: g, r: 0.75 * sx, top: 0.05 + 0.8 * sy };
 }
 
 const crystalGeo = new THREE.OctahedronGeometry(0.35, 0);
@@ -177,7 +182,7 @@ function makeCrystals(rand) {
     c.rotation.set((rand() - 0.5) * 0.6, rand() * 3, (rand() - 0.5) * 0.6);
     g.add(c);
   }
-  return { obj: g, r: 0.6 };
+  return { obj: g, r: 0.6, top: 1.1 };
 }
 
 function makeShip() {
@@ -292,7 +297,7 @@ export function createWorld(scene) {
   things.add(ship.obj);
   ship.obj.updateMatrixWorld();
   for (const z of [-2.2, 0, 2.2]) {
-    colliders.push({ pos: ship.obj.localToWorld(new THREE.Vector3(0, 0, z)), r: 1.5 });
+    addCollider(ship.obj.localToWorld(new THREE.Vector3(0, 0, z)), 1.5, 1.5);
   }
 
   const wingDir = offsetDir(SHIP_DIR, 0.12, 2.2);
@@ -300,7 +305,7 @@ export function createWorld(scene) {
   placeOn(wing, wingDir, towards(wingDir, TOWN_DIR), 0.1);
   wing.rotateZ(0.35);
   things.add(wing);
-  colliders.push({ pos: wing.position.clone(), r: 1.3 });
+  addCollider(wing.position.clone(), 1.3, 0.5);
 
   const [t1, t2] = tangentBasis(TOWN_DIR);
   const toShip = towards(TOWN_DIR, SHIP_DIR);
@@ -309,11 +314,11 @@ export function createWorld(scene) {
     const dir = offsetDir(TOWN_DIR, 0.17, pathAngle + (k * Math.PI) / 3);
     const house = placeOn(makeHouse(k), dir, towards(dir, TOWN_DIR));
     things.add(house);
-    colliders.push({ pos: house.position.clone(), r: 2.4 });
+    addCollider(house.position.clone(), 2.4, 3.3, 2);
   }
   const fountain = placeOn(makeFountain(), TOWN_DIR, toShip);
   things.add(fountain);
-  colliders.push({ pos: fountain.position.clone(), r: 1.5 });
+  addCollider(fountain.position.clone(), 1.5, 0.7);
 
   const rand = makeRandom(2024);
   function scatter(count, make, sink) {
@@ -321,13 +326,13 @@ export function createWorld(scene) {
       const dir = randomDir(rand);
       if (dir.angleTo(SHIP_DIR) < 0.45 || dir.angleTo(TOWN_DIR) < 0.42 || pathDistance(dir) < 0.07) continue;
       if (placed.some((p) => p.angleTo(dir) < 0.07)) continue;
-      const { obj, r } = make(rand);
+      const { obj, r, top, land } = make(rand);
       const [a, b] = tangentBasis(dir);
       const spin = rand() * Math.PI * 2;
       placeOn(obj, dir, a.multiplyScalar(Math.cos(spin)).addScaledVector(b, Math.sin(spin)), sink);
       things.add(obj);
       placed.push(dir);
-      colliders.push({ pos: obj.position.clone(), r });
+      addCollider(obj.position.clone(), r, top, land);
       n++;
     }
   }

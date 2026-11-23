@@ -11,6 +11,12 @@
   - Blocky astronaut: walk/run animation, arms up when jumping, oxygen backpack with green light.
   - Controls: WASD move, mouse look (click to lock), Space jump, Shift run, scroll zoom, Esc pause.
 
+- **Update (2026-11-23)**
+  - Arrow keys shown on the controls screen (they already moved the player).
+  - Ship glitch fixed: obstacles now have a height. You can land and stand on the ship, rocks, trees, houses, the fountain, and the broken wing, and walk up small steps (like along the tilted ship).
+  - Health bar (top-left). Nothing hurts you yet.
+  - Low gravity: jumps are about 4x higher (~6.5 units, ~1.6 s in the air), with more air control.
+
 ## Untested by a human
 - How the controls *feel* (speed, jump height, mouse sensitivity).
 - Camera can go inside trees when it is right behind one.

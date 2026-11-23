@@ -65,6 +65,17 @@ function followPlayer() {
   skyLight.position.copy(up);
 }
 
+const healthFill = document.getElementById('health-fill');
+const healthText = document.getElementById('health-text');
+let shownHealth = -1;
+
+function updateHud() {
+  if (player.health === shownHealth) return;
+  shownHealth = player.health;
+  healthFill.style.width = `${(100 * player.health) / player.maxHealth}%`;
+  healthText.textContent = Math.ceil(player.health);
+}
+
 const hint = document.getElementById('hint');
 renderer.domElement.addEventListener('click', () => renderer.domElement.requestPointerLock());
 document.addEventListener('pointerlockchange', () => {
@@ -86,5 +97,6 @@ renderer.setAnimationLoop((now) => {
   player.update(dt, input, camForward);
   followPlayer();
   world.update(now / 1000);
+  updateHud();
   renderer.render(scene, camera);
 });

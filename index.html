@@ -16,15 +16,27 @@
     #hint h1 { font-size: 48px; letter-spacing: 2px; text-shadow: 0 4px 0 #ff7b29; }
     #hint .play { font-size: 22px; padding: 10px 26px; border: 2px solid #fff; border-radius: 10px; background: rgba(255, 255, 255, 0.12); }
     #hint .keys { font-size: 15px; opacity: 0.85; line-height: 1.8; }
+    #hud { position: fixed; z-index: 1; top: 16px; left: 16px; font-family: system-ui, sans-serif; color: #fff; pointer-events: none; }
+    .bar { display: flex; align-items: center; gap: 8px; font-weight: 700; text-shadow: 0 2px 0 rgba(0, 0, 0, 0.5); }
+    .bar .track { width: 220px; height: 20px; background: rgba(0, 0, 0, 0.45); border: 2px solid #fff; border-radius: 6px; overflow: hidden; }
+    .bar .fill { height: 100%; background: linear-gradient(#ff6b6b, #d62839); transition: width 0.2s; }
+    .bar .icon { font-size: 22px; }
     #hint b { background: rgba(255, 255, 255, 0.18); padding: 1px 7px; border-radius: 4px; }
   </style>
 </head>
 <body>
+  <div id="hud">
+    <div class="bar">
+      <span class="icon">❤️</span>
+      <div class="track"><div class="fill" id="health-fill"></div></div>
+      <span id="health-text">100</span>
+    </div>
+  </div>
   <div id="hint">
     <h1>STRANDED PLANET</h1>
     <div class="play">Click to play</div>
     <div class="keys">
-      <b>W A S D</b> move &nbsp; <b>Mouse</b> look &nbsp; <b>Space</b> jump &nbsp; <b>Shift</b> run<br />
+      <b>W A S D</b> or <b>Arrows</b> move &nbsp; <b>Mouse</b> look &nbsp; <b>Space</b> jump &nbsp; <b>Shift</b> run<br />
       <b>Scroll</b> zoom &nbsp; <b>Esc</b> pause
     </div>
   </div>
