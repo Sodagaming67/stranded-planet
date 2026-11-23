@@ -55,6 +55,10 @@ const ITEMS = {
   },
   herb: ({ part, M }, t, x, y, z) => part(new THREE.ConeGeometry(0.1, 0.32, 5), M.leaf, x, y + 0.16, z),
   plank: ({ part, M }, t, x, y, z) => part(box(0.6, 0.06, 0.15), M.wood, x, y + 0.03, z),
+  gun: ({ part, M }, t, x, y, z) => {
+    part(box(0.34, 0.07, 0.1), M.wood, x - 0.12, y + 0.05, z);
+    part(cyl(0.025, 0.42, 6), M.iron, x + 0.2, y + 0.07, z).rotation.z = Math.PI / 2;
+  },
 };
 
 function toolkit(ctx) {

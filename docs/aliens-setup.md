@@ -1,6 +1,6 @@
 # The aliens
 
-The aliens are in the game (`src/npcs.js`): 18 workers (one per worker spot), 5 helpers who do the same jobs the player can do, and 14 citizens with no job. 12 of the workers are managers (the first worker of each building).
+The aliens are in the game (`src/npcs.js`): workers (one per worker spot), 5 helpers who do the same jobs the player can do, and 34 citizens with no job who mostly walk the streets. 12 of the workers are managers (the first worker of each building).
 
 ## Daily plans
 Every alien follows the same plan every day (`plan` = list of stops with a time, a place, and what they are doing):

@@ -3,6 +3,7 @@ import { wallet } from './money.js';
 import * as economy from './economy.js';
 import { JOBS, job, startJob, finishJob, quitJob } from './jobs.js';
 import { introduce, describeDay, whereGoing, randomTip, timeText } from './npcs.js';
+import { arsenal, equip, holster } from './guns.js';
 
 // Talking to aliens (click an option), the bag, the "Press E" prompt, and the job checklist.
 
@@ -103,6 +104,9 @@ function talkOptions(npc) {
       options.push({ label: 'I want to quit this job', run: () => quitJob().message });
     }
   }
+  if (b === 'GUN SHOP') {
+    options.push({ label: 'How do the guns work?', run: () => 'Buy a gun and some lead balls, then equip the gun from your bag. Aim with the crosshair and click to fire. Old guns are slow to reload! There is a shooting range with targets next to your crashed ship. And please, never aim at people.' });
+  }
   if (npc.kind === 'helper') {
     options.push({ label: 'What are you working on?', run: () => `I'm a ${lower(npc.role)} for the ${lower(b)}. If you want to do this job too, ask the manager there for work!` });
   }
@@ -145,7 +149,7 @@ function showBag(said = '') {
   h.textContent = 'Your bag';
   const who = document.createElement('div');
   who.className = 'who';
-  who.textContent = `Wallet: ${economy.priceText(wallet)} · In the bank: ${economy.priceText(economy.bankAccount)}`;
+  who.textContent = `Wallet: ${economy.priceText(wallet)} · In the bank: ${economy.priceText(economy.bankAccount)} · Lead balls: ${economy.ammo.balls}`;
   const say = document.createElement('div');
   say.className = 'say';
   say.textContent = said || (economy.inventory.length ? 'Click to eat, drink or read.' : 'Your bag is empty. Buy things from the aliens in town!');
@@ -158,6 +162,10 @@ function showBag(said = '') {
     row.append(name);
     const verb = { food: 'Eat', drink: 'Drink', book: 'Read' }[item.kind];
     if (verb) row.append(button(verb, () => showBag(economy.useItem(i).message)));
+    if (item.kind === 'gun') {
+      const holding = arsenal.equipped === item.name;
+      row.append(button(holding ? 'Put away' : 'Equip', () => showBag(holding ? holster() : equip(item.name))));
+    }
     bagPanel.append(row);
   });
   for (const b of economy.bookings) {

@@ -54,6 +54,14 @@
       position: fixed; z-index: 1; top: 66px; right: 16px; padding: 4px 12px; background: rgba(20, 14, 8, 0.6);
       border-radius: 8px; font-family: Georgia, 'Times New Roman', serif; font-size: 16px; color: #f1e2bf; pointer-events: none;
     }
+    #crosshair { position: fixed; z-index: 1; left: 50%; top: 50%; width: 22px; height: 22px; margin: -11px 0 0 -11px; display: none; pointer-events: none; }
+    #crosshair::before, #crosshair::after { content: ''; position: absolute; background: rgba(255, 255, 255, 0.9); box-shadow: 0 0 2px #000; }
+    #crosshair::before { left: 10px; top: 0; width: 2px; height: 22px; }
+    #crosshair::after { top: 10px; left: 0; height: 2px; width: 22px; }
+    #gun-info {
+      position: fixed; z-index: 1; right: 16px; bottom: 16px; display: none; padding: 6px 12px; background: rgba(20, 14, 8, 0.65);
+      border: 2px solid rgba(232, 194, 90, 0.7); border-radius: 8px; color: #f6ecd6; font-family: Georgia, serif; font-size: 15px; pointer-events: none;
+    }
     #hint b { background: rgba(255, 255, 255, 0.18); padding: 1px 7px; border-radius: 4px; }
   </style>
 </head>
@@ -67,6 +75,8 @@
   </div>
   <div id="notice"></div>
   <div id="clock"></div>
+  <div id="crosshair"></div>
+  <div id="gun-info"></div>
   <div id="money" title="10 silver coins = 1 gold coin">
     <div class="row"><span class="coin gold"></span><span id="gold-count">0</span></div>
     <div class="row"><span class="coin silver"></span><span id="silver-count">0</span></div>
@@ -77,7 +87,7 @@
     <div class="play" id="play-text">Click to play</div>
     <div class="keys">
       <b>W A S D</b> or <b>Arrows</b> move &nbsp; <b>Mouse</b> look &nbsp; <b>Space</b> jump &nbsp; <b>Shift</b> run<br />
-      <b>E</b> talk / do a job task &nbsp; <b>B</b> bag &nbsp; <b>Scroll</b> zoom &nbsp; <b>Esc</b> pause
+      <b>E</b> talk / do a job task &nbsp; <b>B</b> bag &nbsp; <b>Click</b> fire a gun &nbsp; <b>Scroll</b> zoom &nbsp; <b>Esc</b> pause
     </div>
   </div>
   <script type="module" src="/src/main.js"></script>

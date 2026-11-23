@@ -77,6 +77,14 @@
   - Smaller than 60 the Bakery stops fitting, so 60 is the smallest size that keeps every must-have building at full (10x) size. Gap-filler shops (Herbalist, Shoemaker) no longer fit.
   - Building spots are now planned widest-first into the snuggest gap; streets around the plaza stop exactly at their corners. 85 trees, 55 rocks, 24 crystal clusters outside town.
 
+- **Gun shop + more citizens (2026-11-23)**
+  - The Tailor (least useful) is now a GUN SHOP run by a gunsmith (manager). Sells old-time guns: flintlock pistol (2 gold), blunderbuss (3 gold, 6-ball spread), long musket (4 gold, long range), lead balls x10 (3 silver).
+  - Guns (`src/guns.js`): equip from the bag (B), crosshair, click to fire; muzzle flash, smoke, bang sound (made in code), lead balls fly and drop, reload time per gun. Shots go exactly to the spot under the crosshair.
+  - Shooting range with 5 flip-down targets next to the crashed ship ("Hit!" / "Bullseye!").
+  - Guns never hurt aliens: they duck and tell you off.
+  - 34 citizens now (was 14), who spend more time walking the streets and plaza; 55 aliens total; more homes at the edge of town.
+  - Test shortcut: `&gun` starts you holding a musket with 10 lead balls.
+
 ## Untested by a human
 - How the controls *feel* (speed, jump height, mouse sensitivity).
 - Camera can go inside trees or through house walls when it is right behind one.

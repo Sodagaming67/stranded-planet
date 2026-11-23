@@ -124,6 +124,11 @@ export const SERVICES = {
     stock: ['sack'],
     sells: [item('Ride across town', 0, 5)],
   },
+  'GUN SHOP': {
+    service: 'Sells old-time guns',
+    stock: ['gun'],
+    sells: [item('Flintlock pistol', 2, 0), item('Blunderbuss', 3, 0), item('Long musket', 4, 0), item('Lead balls (10)', 0, 3)],
+  },
   BANK: {
     service: 'Keeps your coins safe',
     sells: [item('Deposit coins', 0, 0), item('Withdraw coins', 0, 0), item('Swap 10 silver for 1 gold', 0, 0)],
@@ -140,6 +145,7 @@ const HOURS = {
   TAVERN: [10, 24],
   BANK: [9, 17],
   LIBRARY: [9, 19],
+  'GUN SHOP': [9, 18],
 };
 
 // The job an alien has when it works at each building. Anything not listed is a Shopkeeper.
@@ -149,7 +155,7 @@ const ROLES = {
   'CANDLE MAKER': 'Candle maker', POTTER: 'Potter', CARPENTER: 'Carpenter', 'FARM SUPPLY': 'Farm supplier',
   'BOOK SHOP': 'Bookseller', 'POST OFFICE': 'Postmaster', BLACKSMITH: 'Blacksmith', TAVERN: 'Tavern keeper',
   'INN & HOTEL': 'Innkeeper', HOTEL: 'Innkeeper', 'BOARDING HOUSE': 'Landlord', HOSPITAL: 'Doctor', CLINIC: 'Nurse',
-  LIBRARY: 'Librarian', STABLE: 'Stable hand', BANK: 'Bank teller',
+  LIBRARY: 'Librarian', STABLE: 'Stable hand', BANK: 'Bank teller', 'GUN SHOP': 'Gunsmith',
 };
 
 // What some paid services do (everything else just goes into your bag).
@@ -173,6 +179,7 @@ const EFFECTS = {
   'Deposit coins': { type: 'bank' },
   'Withdraw coins': { type: 'bank' },
   'Swap 10 silver for 1 gold': { type: 'bank' },
+  'Lead balls (10)': { type: 'ammo', amount: 10 },
 };
 
 for (const [name, info] of Object.entries(SERVICES)) {

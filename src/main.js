@@ -11,6 +11,8 @@ import { buildNavigation } from './navigation.js';
 import { createNPCs, updateNPCs, nearestNPC, faceTowards } from './npcs.js';
 import { initJobs, updateJobs, doTaskNear, taskNear, onJobMessage } from './jobs.js';
 import { ui, openTalk, openBag, closeUI, setPrompt, updateJobPanel } from './ui.js';
+import { initGuns, updateGuns, fire, arsenal, equip } from './guns.js';
+import { ammo, inventory } from './economy.js';
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -54,6 +56,13 @@ if (startHour) clock.minutes = Number(startHour[1]) * 60;
 buildNavigation(heightAt);
 createNPCs(scene);
 initJobs(scene);
+initGuns(scene, player);
+// Test shortcut: "&gun" starts you holding a musket with 10 lead balls.
+if (location.hash.startsWith('#test') && location.hash.includes('gun')) {
+  inventory.push({ name: 'Long musket', from: 'GUN SHOP', kind: 'gun' });
+  ammo.balls = 10;
+  equip('Long musket');
+}
 
 const camForward = start.facing.clone();
 let pitch = 0.25;
@@ -177,6 +186,21 @@ if (testMode) hint.style.display = 'none';
 renderer.domElement.addEventListener('click', () => {
   if (!ui.open) renderer.domElement.requestPointerLock();
 });
+addEventListener('mousedown', (e) => {
+  if (e.button === 0 && (document.pointerLockElement || testMode) && !ui.open && arsenal.equipped) fire(camera);
+});
+
+const crosshair = document.getElementById('crosshair');
+const gunInfo = document.getElementById('gun-info');
+let shownGun = '';
+function updateGunHud() {
+  const text = arsenal.equipped ? `${arsenal.equipped} · ${ammo.balls} lead ball${ammo.balls === 1 ? '' : 's'}${arsenal.reloadLeft > 0 ? ' · reloading…' : ''}` : '';
+  crosshair.style.display = arsenal.equipped && !ui.open ? 'block' : 'none';
+  if (text === shownGun) return;
+  shownGun = text;
+  gunInfo.textContent = text;
+  gunInfo.style.display = text ? 'block' : 'none';
+}
 document.addEventListener('pointerlockchange', () => {
   hint.style.display = isPlaying() ? 'none' : 'flex';
   playText.textContent = 'Paused — click to keep playing';
@@ -234,6 +258,8 @@ renderer.setAnimationLoop((now) => {
   clock.update(dt);
   world.update(now / 1000, dt);
   updateNPCs(dt);
+  updateGuns(dt);
+  updateGunHud();
   updateJobs(now / 1000);
   updateHud();
   updateNotice();

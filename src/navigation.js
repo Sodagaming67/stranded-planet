@@ -99,7 +99,7 @@ export function buildNavigation(heightAt) {
     }
     join(previous, outer.middle(axis));
     // Homes at the edge of town, past the back street.
-    for (let y = -40; y <= 40; y += 10) {
+    for (let y = -40; y <= 40; y += 5) {
       const key = `home${axis}_${y}`;
       add(key, L.point(axis, L.outerStreet + 8, y));
       for (const k of nearest(nav.nodes[byKey.get(key)].dir, outer.keys, 1)) join(key, k);

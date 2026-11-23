@@ -177,7 +177,7 @@ const SHOP_TYPES = [
   big({ name: 'BLACKSMITH', w: 7, d: 5.5, h: 3.6, door: 3.2, inside: 'forge', wall: M.stoneWall, chimney: true }),
   shop('BAKERY', { wall: M.plasterWarm, frame: true, chimney: true }),
   shop('POST OFFICE', { wall: M.plaster, frame: true, awning: false }),
-  shop('TAILOR'),
+  shop('GUN SHOP', { wall: M.stoneWall, awning: false, chimney: false }),
   big({ name: 'LIBRARY', w: 8, d: 5.5, h: 4.8, door: 3, inside: 'books', wall: M.stoneWall }),
 ];
 const EXTRA_SHOPS = [

@@ -169,8 +169,9 @@ export function createPlayer(scene, spawnDir, facingDir) {
 
     const speed = velocity.length();
     facing.addScaledVector(up, -facing.dot(up)).normalize();
-    if (speed > 0.5) {
-      target.copy(velocity).divideScalar(speed);
+    if (api.aiming || speed > 0.5) {
+      if (api.aiming) target.copy(camForward).addScaledVector(up, -camForward.dot(up)).normalize();
+      else target.copy(velocity).divideScalar(speed);
       const sign = Math.sign(push.crossVectors(facing, target).dot(up)) || 1;
       facing.applyAxisAngle(up, sign * Math.min(facing.angleTo(target), 14 * dt));
     }
@@ -192,13 +193,18 @@ export function createPlayer(scene, spawnDir, facingDir) {
       swing(armL, -2.6, dt);
       swing(armR, -2.6, dt);
     }
+    if (api.aiming) swing(armR, -Math.PI / 2, dt * 3);
   }
 
-  return {
+  const api = {
     position,
     update,
     health: MAX_HEALTH,
     maxHealth: MAX_HEALTH,
+    aiming: false, // true while holding a gun: the right arm points forward and the astronaut faces where the camera looks
+    hand: armR,
+    model,
     get grounded() { return grounded; },
   };
+  return api;
 }

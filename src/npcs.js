@@ -14,10 +14,12 @@ import { JOBS } from './jobs.js';
 export const npcs = [];
 const WALK_SPEED = 3.6;
 const COMMUTE = 80; // workers leave home this many minutes before their shift
-const CITIZENS = 14;
+const CITIZENS = 34;
 
 const NAMES = [
   'Zib', 'Pom', 'Vex', 'Quill', 'Lumi', 'Bix', 'Tova', 'Grub', 'Nim', 'Orla', 'Pip', 'Rook', 'Suki', 'Trix', 'Ulo', 'Wix',
+  'Abbo', 'Brix', 'Cozz', 'Dree', 'Elmo', 'Flib', 'Gorp', 'Hobb', 'Izzy', 'Jix', 'Kozz', 'Lopa', 'Mib', 'Noodle', 'Obi',
+  'Pazz', 'Quibb', 'Rumi', 'Snoot', 'Tazz', 'Umba', 'Voop',
   'Yara', 'Zorp', 'Blim', 'Crix', 'Dax', 'Fizz', 'Gloop', 'Hux', 'Ixa', 'Jorb', 'Kip', 'Lark', 'Moxi', 'Nuzz', 'Oob',
   'Plix', 'Quor', 'Ree', 'Skee', 'Tib', 'Vim', 'Wump', 'Xel', 'Yib', 'Zuzu', 'Bop', 'Cree', 'Dob',
 ];
@@ -40,6 +42,7 @@ const OUTFITS = {
   'Bread runner': { shirt: '#f4f1e8', apron: '#c68b4e', bag: true },
   'Shelf stocker': { shirt: '#2a9d8f', apron: '#8a6239' },
   Storekeeper: { shirt: '#2a9d8f', apron: '#8a6239' },
+  Gunsmith: { shirt: '#5a3a22', apron: '#2b1d0e', hat: 'cap', hatColor: '#2b1d0e' },
 };
 
 const TIPS = [
@@ -206,15 +209,16 @@ function citizenPlan(rand, home) {
         choices.push({ place: b.navKey(pick(rand, b.stations).customerNode), label: `visiting the ${b.name.toLowerCase()}` });
       }
     }
-    choices.push({ place: pick(rand, nav.plazaSpots), label: 'walking around the bank plaza' });
-    choices.push({ place: pick(rand, nav.streetSpots), label: 'taking a walk around town' });
+    // Citizens love the streets: walks and the plaza come up more often than shops.
+    for (let i = 0; i < 2; i++) choices.push({ place: pick(rand, nav.plazaSpots), label: 'walking around the bank plaza' });
+    for (let i = 0; i < 5; i++) choices.push({ place: pick(rand, nav.streetSpots), label: 'taking a walk around town' });
     if (hour >= 17) {
       const tavern = byName('TAVERN');
       if (tavern) choices.push({ place: tavern.navKey(pick(rand, tavern.stations).customerNode), label: 'having dinner at the tavern' });
     }
     const errand = pick(rand, choices);
     stops.push(stop(t, errand.place, 'visit', errand.label));
-    t += 50 + rand() * 60;
+    t += 30 + rand() * 50;
   }
   stops.push(stop(t, home, 'sleep', 'at home, asleep'));
   return stops;

@@ -28,6 +28,8 @@ const BOOKS = [
 ];
 export const bookings = []; // hotel rooms the player is renting: { hotel, room, price, nights, paidThroughDay }
 export const bankAccount = { gold: 0, silver: 0 }; // coins kept safe in the bank
+export const ammo = { balls: 0 }; // lead balls for the old-time guns
+const GUNS = ['Flintlock pistol', 'Blunderbuss', 'Long musket'];
 
 let player = null;
 export function setPlayer(p) {
@@ -41,6 +43,11 @@ export function onMessage(fn) {
 function result(ok, message) {
   messageListeners.forEach((fn) => fn(message));
   return { ok, message };
+}
+
+// Shows a message on screen (used by other parts of the game, like the guns).
+export function announce(message) {
+  messageListeners.forEach((fn) => fn(message));
 }
 
 const hourText = (h) => `${((h + 11) % 12) + 1} ${h % 24 < 12 ? 'AM' : 'PM'}`;
@@ -98,6 +105,7 @@ export function sell(worker, building, offerName) {
   if (offer.effect.type === 'room') return rentRoom(worker, building);
   if (offer.effect.type === 'bank') return result(false, 'Use the bank actions for that.');
   if (offerName === 'Borrow a book') return borrowBook(worker);
+  if (GUNS.includes(offerName) && inventory.some((i) => i.name === offerName)) return result(false, `You already have a ${offerName.toLowerCase()}.`);
   if (offerName === 'Library card' && inventory.some((i) => i.name === 'Library card')) return result(false, 'You already have a library card.');
   if (!pay(offer)) return result(false, `You need ${priceText(offer)} for ${offerName.toLowerCase()}.`);
 
@@ -111,6 +119,14 @@ export function sell(worker, building, offerName) {
     return result(true, `${offerName}. Yum! ${paid}`);
   }
   if (offer.effect.type === 'service') return result(true, `${offerName}. ${paid}`);
+  if (offer.effect.type === 'ammo') {
+    ammo.balls += offer.effect.amount;
+    return result(true, `You bought ${offer.effect.amount} lead balls. You have ${ammo.balls} now. ${paid}`);
+  }
+  if (GUNS.includes(offerName)) {
+    inventory.push({ name: offerName, from: building, kind: 'gun' });
+    return result(true, `You bought a ${offerName.toLowerCase()}! Equip it from your bag (press B), then click to fire. You'll need lead balls too. ${paid}`);
+  }
   inventory.push(makeItem(offerName, building));
   return result(true, `You bought ${offerName.toLowerCase()}. It's in your bag (press B). ${paid}`);
 }
