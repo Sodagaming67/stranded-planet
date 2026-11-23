@@ -1,6 +1,11 @@
 import * as THREE from 'three';
 import { RADIUS, heightAt, colliders } from './world.js';
 
+const HEIGHT = 2.2;
+const BODY_RADIUS = 0.4;
+const MAX_SLOPE = 1;
+const NEARBY = Math.cos(14 / RADIUS);
+
 const SUIT = '#f1f1f1';
 const ACCENT = '#ff7b29';
 const WALK_SPEED = 6;
@@ -67,6 +72,35 @@ export function createPlayer(scene, spawnDir, facingDir) {
   const target = new THREE.Vector3();
   const basis = new THREE.Matrix4();
 
+  const previous = new THREE.Vector3();
+  const step = new THREE.Vector3();
+
+  function offsetFrom(c) {
+    push.subVectors(position, c.pos);
+    push.addScaledVector(up, -push.dot(up));
+  }
+
+  function inside(c, margin) {
+    if (!c.box) return push.length() < c.r + margin;
+    return Math.abs(push.dot(c.ax)) < c.hx + margin && Math.abs(push.dot(c.az)) < c.hz + margin;
+  }
+
+  function pushOut(c) {
+    if (!c.box) {
+      const d = push.length();
+      const min = c.r + BODY_RADIUS;
+      if (d < min && d > 1e-4) position.addScaledVector(push, (min - d) / d);
+      return;
+    }
+    const lx = push.dot(c.ax);
+    const lz = push.dot(c.az);
+    const ox = c.hx + BODY_RADIUS - Math.abs(lx);
+    const oz = c.hz + BODY_RADIUS - Math.abs(lz);
+    if (ox <= 0 || oz <= 0) return;
+    if (ox < oz) position.addScaledVector(c.ax, (lx < 0 ? -1 : 1) * ox);
+    else position.addScaledVector(c.az, (lz < 0 ? -1 : 1) * oz);
+  }
+
   function swing(limbPart, angle, dt) {
     limbPart.rotation.x += (angle - limbPart.rotation.x) * (1 - Math.exp(-15 * dt));
   }
@@ -84,30 +118,46 @@ export function createPlayer(scene, spawnDir, facingDir) {
       grounded = false;
     }
     vUp -= GRAVITY * dt;
+    const terrainBefore = RADIUS + heightAt(up);
+    previous.copy(position);
     position.addScaledVector(velocity, dt).addScaledVector(up, vUp * dt);
 
     up.copy(position).normalize();
-    const radius = position.length();
+    step.subVectors(position, previous);
+    step.addScaledVector(up, -step.dot(up));
+    const moved = step.length();
+    const terrainAfter = RADIUS + heightAt(up);
+    if (moved > 1e-5 && (terrainAfter - terrainBefore) / moved > MAX_SLOPE && terrainAfter > position.length() - 0.05) {
+      position.copy(previous).setLength(position.length());
+      velocity.set(0, 0, 0);
+      up.copy(position).normalize();
+    }
+
+    let radius = position.length();
     const stepUp = grounded ? 0.5 : 0.05;
     for (const c of colliders) {
-      if (lastRadius >= c.top - stepUp) continue;
-      push.subVectors(position, c.pos);
-      push.addScaledVector(up, -push.dot(up));
-      const d = push.length();
-      const min = c.r + 0.4;
-      if (radius < c.top && d < min && d > 1e-4) position.addScaledVector(push, (min - d) / d);
+      if (c.dir.dot(up) < NEARBY || lastRadius >= c.top - stepUp) continue;
+      offsetFrom(c);
+      if (lastRadius + HEIGHT <= c.bottom + 0.05) {
+        if (radius + HEIGHT > c.bottom && inside(c, 0)) {
+          radius = c.bottom - HEIGHT;
+          position.setLength(radius);
+          vUp = Math.min(vUp, 0);
+        }
+        continue;
+      }
+      if (radius < c.top && radius + HEIGHT > c.bottom) pushOut(c);
     }
 
     up.copy(position).normalize();
     let ground = RADIUS + heightAt(up);
     for (const c of colliders) {
-      if (lastRadius < c.top - stepUp) continue;
-      push.subVectors(position, c.pos);
-      push.addScaledVector(up, -push.dot(up));
-      if (push.length() < c.land) ground = Math.max(ground, c.top);
+      if (c.dir.dot(up) < NEARBY || lastRadius < c.top - stepUp) continue;
+      offsetFrom(c);
+      if (c.box ? inside(c, 0.1) : push.length() < c.land) ground = Math.max(ground, c.top);
     }
     const above = position.length() - ground;
-    if (above <= 0 || (grounded && vUp <= 0 && above < 0.4)) {
+    if (above <= 0 || (grounded && vUp <= 0 && above < 0.6)) {
       position.setLength(ground);
       vUp = 0;
       grounded = true;

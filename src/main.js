@@ -28,9 +28,10 @@ sun.shadow.normalBias = 0.05;
 scene.add(sun, sun.target);
 
 const world = createWorld(scene);
-const player = createPlayer(scene, world.spawnDir, world.spawnFacing);
+const atTown = location.hash === '#test-town';
+const player = atTown ? createPlayer(scene, world.townGate, world.townGateFacing) : createPlayer(scene, world.spawnDir, world.spawnFacing);
 
-const camForward = world.spawnFacing.clone();
+const camForward = (atTown ? world.townGateFacing : world.spawnFacing).clone();
 let pitch = 0.25;
 let distance = 9;
 const up = new THREE.Vector3();
@@ -78,7 +79,7 @@ function updateHud() {
 
 const hint = document.getElementById('hint');
 const playText = document.getElementById('play-text');
-const testMode = location.hash === '#test';
+const testMode = location.hash.startsWith('#test');
 const isPlaying = () => testMode || !!document.pointerLockElement;
 if (testMode) hint.style.display = 'none';
 

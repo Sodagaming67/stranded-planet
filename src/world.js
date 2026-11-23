@@ -1,42 +1,11 @@
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import {
+  RADIUS, SHIP_DIR, colliders, toAngle, makeRandom, randomDir, tangentBasis, towards, addCollider, placeAt,
+  mat, mesh, box, grassColor, Batcher,
+} from './geo.js';
+import { TOWN_DIR, TOWN_CORE, TOWN_EDGE, dirToLocal, localToDir, townHeight, createTown } from './town.js';
 
-export const RADIUS = 80;
-export const SHIP_DIR = new THREE.Vector3(0, 1, 0);
-export const colliders = [];
-
-const UP = new THREE.Vector3(0, 1, 0);
-const SIDE = new THREE.Vector3(1, 0, 0);
-const toAngle = (distance) => distance / RADIUS;
-
-function addCollider(pos, r, top, land = r + 0.2) {
-  colliders.push({ pos, r, top: pos.length() + top, land });
-}
-
-function makeRandom(seed) {
-  return () => {
-    seed = (seed * 16807) % 2147483647;
-    return (seed - 1) / 2147483646;
-  };
-}
-
-function randomDir(rand) {
-  const z = rand() * 2 - 1;
-  const t = rand() * Math.PI * 2;
-  const s = Math.sqrt(1 - z * z);
-  return new THREE.Vector3(s * Math.cos(t), s * Math.sin(t), z);
-}
-
-export function tangentBasis(dir) {
-  const helper = Math.abs(dir.y) < 0.9 ? UP : SIDE;
-  const t1 = new THREE.Vector3().crossVectors(helper, dir).normalize();
-  const t2 = new THREE.Vector3().crossVectors(dir, t1);
-  return [t1, t2];
-}
-
-function towards(from, to) {
-  return to.clone().addScaledVector(from, -to.dot(from)).normalize();
-}
+export { RADIUS, SHIP_DIR, colliders };
 
 function offsetDir(center, distance, around) {
   const angle = toAngle(distance);
@@ -62,69 +31,66 @@ const waves = Array.from({ length: 18 }, (_, i) => ({
 export function heightAt(dir) {
   let h = 0;
   for (const w of waves) h += w.a * Math.sin(w.k * dir.dot(w.d) + w.ph);
-  return h * away(dir, SHIP_DIR, 4, 12);
+  const { u, v } = dirToLocal(dir);
+  const fromTown = Math.hypot(u, v);
+  h *= Math.min(away(dir, SHIP_DIR, 4, 12), THREE.MathUtils.smoothstep(fromTown, TOWN_CORE, TOWN_EDGE));
+  return fromTown < TOWN_CORE ? h + townHeight(u, v) : h;
 }
 
-const mat = (color, extra = {}) =>
-  new THREE.MeshStandardMaterial({ color, flatShading: true, roughness: 0.85, ...extra });
+const PATH_NORMAL = new THREE.Vector3().crossVectors(SHIP_DIR, TOWN_DIR).normalize();
+const PATH_ANGLE = SHIP_DIR.angleTo(TOWN_DIR);
 
-function mesh(geo, material, x = 0, y = 0, z = 0) {
-  const m = new THREE.Mesh(geo, material);
-  m.position.set(x, y, z);
-  m.castShadow = true;
-  m.receiveShadow = true;
-  return m;
+function pathDistance(dir) {
+  if (dir.angleTo(SHIP_DIR) + dir.angleTo(TOWN_DIR) > PATH_ANGLE + 0.02) return Infinity;
+  return Math.asin(Math.min(1, Math.abs(dir.dot(PATH_NORMAL)))) * RADIUS;
 }
-
-const box = (w, h, d) => new THREE.BoxGeometry(w, h, d);
-
-const _x = new THREE.Vector3();
-const _z = new THREE.Vector3();
-const _m = new THREE.Matrix4();
 
 function placeOn(obj, dir, facing, sink = 0) {
   const up = dir.clone().normalize();
-  _z.copy(facing).addScaledVector(up, -facing.dot(up)).normalize();
-  _x.crossVectors(up, _z);
-  _m.makeBasis(_x, up, _z);
-  obj.quaternion.setFromRotationMatrix(_m);
-  obj.position.copy(up).multiplyScalar(RADIUS + heightAt(up) - sink);
-  return obj;
+  return placeAt(obj, up, facing, RADIUS + heightAt(up) - sink);
 }
 
 function createPlanet() {
-  const geo = new THREE.IcosahedronGeometry(RADIUS, 80);
-  const pos = geo.attributes.position;
-  const heights = new Float32Array(pos.count);
+  const source = new THREE.IcosahedronGeometry(RADIUS, 80).attributes.position;
+  const corner = new THREE.Vector3();
+  const insideTown = (i) => corner.fromBufferAttribute(source, i).normalize().angleTo(TOWN_DIR) * RADIUS < TOWN_EDGE - 1.5;
+  const positions = [];
+  const heights = [];
   const v = new THREE.Vector3();
-  for (let i = 0; i < pos.count; i++) {
-    v.fromBufferAttribute(pos, i).normalize();
-    heights[i] = heightAt(v);
-    v.multiplyScalar(RADIUS + heights[i]);
-    pos.setXYZ(i, v.x, v.y, v.z);
+  for (let i = 0; i < source.count; i += 3) {
+    if (insideTown(i) && insideTown(i + 1) && insideTown(i + 2)) continue;
+    for (let k = 0; k < 3; k++) {
+      v.fromBufferAttribute(source, i + k).normalize();
+      const h = heightAt(v);
+      v.multiplyScalar(RADIUS + h);
+      positions.push(v.x, v.y, v.z);
+      heights.push(h);
+    }
   }
 
-  const low = new THREE.Color('#2f8f87');
-  const high = new THREE.Color('#7cc576');
   const scorch = new THREE.Color('#3d3230');
-  const colors = new Float32Array(pos.count * 3);
+  const dirt = new THREE.Color('#9c7a52');
+  const colors = new Float32Array(positions.length);
   const c = new THREE.Color();
-  const a = new THREE.Vector3(), b = new THREE.Vector3(), d = new THREE.Vector3();
+  const center = new THREE.Vector3();
   const rand = makeRandom(42);
-  for (let i = 0; i < pos.count; i += 3) {
-    a.fromBufferAttribute(pos, i);
-    b.fromBufferAttribute(pos, i + 1);
-    d.fromBufferAttribute(pos, i + 2);
-    const center = a.add(b).add(d).normalize();
-    const h = (heights[i] + heights[i + 1] + heights[i + 2]) / 3;
-    c.copy(low).lerp(high, THREE.MathUtils.clamp((h + 2) / 5, 0, 1));
+  for (let i = 0; i < heights.length; i += 3) {
+    center.set(
+      positions[i * 3] + positions[i * 3 + 3] + positions[i * 3 + 6],
+      positions[i * 3 + 1] + positions[i * 3 + 4] + positions[i * 3 + 7],
+      positions[i * 3 + 2] + positions[i * 3 + 5] + positions[i * 3 + 8],
+    ).normalize();
+    grassColor((heights[i] + heights[i + 1] + heights[i + 2]) / 3, c);
+    if (pathDistance(center) < 1.6) c.lerp(dirt, 0.85);
     c.lerp(scorch, 0.85 * (1 - away(center, SHIP_DIR, 1.6, 4.8)));
     c.offsetHSL((rand() - 0.5) * 0.02, 0, (rand() - 0.5) * 0.05);
     for (let j = 0; j < 3; j++) c.toArray(colors, (i + j) * 3);
   }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   geo.computeVertexNormals();
-
   const planet = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.95 }));
   planet.receiveShadow = true;
   return planet;
@@ -242,41 +208,30 @@ function createSky(scene) {
 
 function scatterDecorations(things, rand) {
   const placed = [];
-  const buckets = new Map();
+  const batch = new Batcher();
   const minGap = toAngle(2.8);
   const shipClear = toAngle(16);
+  const townClear = toAngle(TOWN_EDGE + 2);
 
   function scatter(count, make, sink) {
     for (let n = 0, tries = 0; n < count && tries < count * 40; tries++) {
       const dir = randomDir(rand);
-      if (dir.angleTo(SHIP_DIR) < shipClear) continue;
+      if (dir.angleTo(SHIP_DIR) < shipClear || dir.angleTo(TOWN_DIR) < townClear || pathDistance(dir) < 3.5) continue;
       if (placed.some((p) => p.angleTo(dir) < minGap)) continue;
       const { obj, r, top, land } = make(rand);
       const [a, b] = tangentBasis(dir);
       const spin = rand() * Math.PI * 2;
       placeOn(obj, dir, a.multiplyScalar(Math.cos(spin)).addScaledVector(b, Math.sin(spin)), sink);
-      obj.updateMatrixWorld(true);
-      obj.traverse((m) => {
-        if (!m.isMesh) return;
-        if (!buckets.has(m.material)) buckets.set(m.material, []);
-        buckets.get(m.material).push(m.geometry.clone().applyMatrix4(m.matrixWorld));
-      });
+      batch.add(obj);
       placed.push(dir);
       addCollider(obj.position.clone(), r, top, land);
       n++;
     }
   }
-  scatter(280, makeTree, 0.1);
-  scatter(180, makeRock, 0.15);
-  scatter(70, makeCrystals, 0.1);
-
-  for (const [material, geos] of buckets) {
-    const merged = new THREE.Mesh(mergeGeometries(geos), material);
-    merged.castShadow = true;
-    merged.receiveShadow = true;
-    things.add(merged);
-    geos.forEach((g) => g.dispose());
-  }
+  scatter(220, makeTree, 0.1);
+  scatter(140, makeRock, 0.15);
+  scatter(60, makeCrystals, 0.1);
+  batch.build(things);
 }
 
 export function createWorld(scene) {
@@ -286,13 +241,14 @@ export function createWorld(scene) {
   const things = new THREE.Group();
   scene.add(things);
 
-  const [shipForward, shipSide] = tangentBasis(SHIP_DIR);
+  const toTown = towards(SHIP_DIR, TOWN_DIR);
+  const shipSide = new THREE.Vector3().crossVectors(SHIP_DIR, toTown);
   const ship = makeShip();
-  placeOn(ship.obj, SHIP_DIR, shipForward, 0.4);
+  placeOn(ship.obj, SHIP_DIR, shipSide, 0.4);
   ship.obj.rotateZ(0.2);
   ship.obj.rotateX(0.15);
-  things.add(ship.obj);
   ship.obj.updateMatrixWorld();
+  things.add(ship.obj);
   for (const z of [-2.2, 0, 2.2]) {
     addCollider(ship.obj.localToWorld(new THREE.Vector3(0, 0, z)), 1.5, 1.5);
   }
@@ -304,15 +260,22 @@ export function createWorld(scene) {
   things.add(wing);
   addCollider(wing.position.clone(), 1.3, 0.5);
 
+  createTown(scene, heightAt);
   scatterDecorations(things, makeRandom(2024));
 
-  const spawnAway = shipForward.clone().multiplyScalar(-0.5).addScaledVector(shipSide, 0.87);
+  const spawnAway = toTown.clone().multiplyScalar(-0.6).addScaledVector(shipSide, -0.8).normalize();
   const spawnAngle = toAngle(8);
   const spawnDir = SHIP_DIR.clone().multiplyScalar(Math.cos(spawnAngle)).addScaledVector(spawnAway, Math.sin(spawnAngle)).normalize();
+
+  const shipInTown = dirToLocal(SHIP_DIR);
+  const gate = Math.hypot(shipInTown.u, shipInTown.v);
+  const townGate = localToDir((shipInTown.u / gate) * 58, (shipInTown.v / gate) * 58);
 
   return {
     spawnDir,
     spawnFacing: towards(spawnDir, SHIP_DIR),
+    townGate,
+    townGateFacing: towards(townGate, TOWN_DIR),
     update(t) {
       ship.update(t);
       crystalMat.emissiveIntensity = 0.5 + Math.sin(t * 2) * 0.25;

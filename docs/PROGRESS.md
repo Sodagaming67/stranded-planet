@@ -23,9 +23,21 @@
   - 280 trees, 180 rocks, 70 crystal clusters, merged into a few big shapes so it doesn't lag.
   - Test hook: open the game at `localhost:5180/#test` to skip the start screen (used for screenshots).
 
+- **Town (2026-11-23)** — `src/town.js`
+  - Huge rustic hillside town (~130 units across), ~92 units from the ship, linked by a dirt road.
+  - 3 levels: lower town, raised middle level (stone cliffs + wooden fences), hilltop plaza (cobbles, stone well, 4 market stalls, big hall).
+  - 7 stone staircases (4 up to the middle, 3 up to the plaza). Cliffs block walking; you can still jump up them.
+  - Dirt roads: inner ring, outer ring, middle-level ring, a lane around the plaza cliff, streets out of town.
+  - 67 hollow houses (empty inside): plaster + timber frame, plank, or stone walls; stone foundations, plank floors, doorways, shuttered windows, pitched roofs, some chimneys. You can walk in; roofs stop your jumps inside; you can stand on roofs.
+  - Props: barrels, crates, hay bales, carts, lantern posts (flame lanterns). Nothing modern.
+  - For NPCs later: `townWalkways` in `src/town.js` lists every road, staircase and the plaza (flat town map coordinates; `toDir` turns them into planet positions).
+  - New collision system (`src/geo.js` + `src/player.js`): thin walls, ceilings, floors, step-up stairs, steep cliffs.
+  - Test hooks: `localhost:5180/#test` (skip start screen) and `#test-town` (start at the town gate).
+
 ## Untested by a human
 - How the controls *feel* (speed, jump height, mouse sensitivity).
-- Camera can go inside trees when it is right behind one.
+- Camera can go inside trees or through house walls when it is right behind one.
+- How walking around inside houses feels.
 
 ## Next
 - Philip will add health and oxygen himself later.

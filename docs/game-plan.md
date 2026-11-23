@@ -1,7 +1,7 @@
 # Stranded Planet — Game Plan
 
 ## Story
-You crash your spaceship on a tiny planet covered in wild land. (The town was removed on 2026-11-23 by Philip's choice.)
+You crash your spaceship on a tiny planet covered in wild land. A big rustic alien town (no modern stuff) sits on a hill on the far side; its houses are empty for now and alien NPCs will walk its roads later.
 Make money to survive. Final goal: repair the ship (e.g. 10 rare parts) — or choose to stay.
 
 ## Ideas so far
