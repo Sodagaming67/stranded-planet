@@ -2,7 +2,7 @@
 
 ## Done
 - Project set up (Three.js + Vite).
-- **Stage 1 — world + character (2026-11-23)**
+- **Stage 1 â€” world + character (2026-11-23)**
   - Tiny round planet (radius 40) with rolling hills; gravity pulls toward the center, so you can walk all the way around.
   - Crashed ship with smoke, broken wing, scorched crater. You start next to it.
   - Dirt path from the ship to a small town: 5 colorful houses + crystal fountain (placeholder until the town vibe is decided).
@@ -23,7 +23,7 @@
   - 280 trees, 180 rocks, 70 crystal clusters, merged into a few big shapes so it doesn't lag.
   - Test hook: open the game at `localhost:5180/#test` to skip the start screen (used for screenshots).
 
-- **Town (2026-11-23)** � `src/town.js`
+- **Town (2026-11-23)** — `src/town.js`
   - Huge rustic hillside town (~130 units across), ~92 units from the ship, linked by a dirt road.
   - 3 levels: lower town, raised middle level (stone cliffs + wooden fences), hilltop plaza (cobbles, stone well, 4 market stalls, big hall).
   - 7 stone staircases (4 up to the middle, 3 up to the plaza). Cliffs block walking; you can still jump up them.
@@ -33,6 +33,12 @@
   - For NPCs later: `townWalkways` in `src/town.js` lists every road, staircase and the plaza (flat town map coordinates; `toDir` turns them into planet positions).
   - New collision system (`src/geo.js` + `src/player.js`): thin walls, ceilings, floors, step-up stairs, steep cliffs.
   - Test hooks: `localhost:5180/#test` (skip start screen) and `#test-town` (start at the town gate).
+
+- **Shops + bank (2026-11-23)**
+  - Shop district: about 40% of the lower town (centered on the main street from the ship) is now 24 shops and public buildings, each with a carved wooden name sign: Inn & Hotel, Hospital, General Store, Tavern, Blacksmith, Bakery, Post Office, Tailor, Library, plus extras (Grocer, Clinic, Potion Shop, Carpenter, Butcher, Toy Shop, Book Shop, Farm Supply, Boarding House).
+  - Insides match the building: counters + shelves (shops), beds (hotel, hospital, clinic), bar + tables (tavern), glowing forge + anvil (blacksmith), bookshelves (library). Hotels are 2 stories with a balcony.
+  - Giant stone BANK in the middle of the hilltop plaza: columns, front steps, gold sign + coin, teller counter, round vault door. Plaza made bigger; well + 2 market stalls moved behind the bank.
+  - Town is a bit bigger (outer ring road moved out) so the bigger buildings fit.
 
 ## Untested by a human
 - How the controls *feel* (speed, jump height, mouse sensitivity).
