@@ -17,9 +17,16 @@
   - Health bar (top-left). Nothing hurts you yet.
   - Low gravity: jumps are about 4x higher (~6.5 units, ~1.6 s in the air), with more air control.
 
+- **Update 2 (2026-11-23)**
+  - Start screen is now a solid space screen (game hidden). You can't move until you click in. Esc shows the same screen as "Paused".
+  - Planet doubled in size (radius 80, about 4x the ground). Town and dirt path removed (Philip's choice).
+  - 280 trees, 180 rocks, 70 crystal clusters, merged into a few big shapes so it doesn't lag.
+  - Test hook: open the game at `localhost:5180/#test` to skip the start screen (used for screenshots).
+
 ## Untested by a human
 - How the controls *feel* (speed, jump height, mouse sensitivity).
 - Camera can go inside trees when it is right behind one.
 
 ## Next
-- Stage 2: town, NPCs to talk to, shop.
+- Philip will add health and oxygen himself later.
+- Waiting for Philip's next ideas.

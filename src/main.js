@@ -9,7 +9,7 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.35;
+renderer.toneMappingExposure = 1.05;
 document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
@@ -77,9 +77,15 @@ function updateHud() {
 }
 
 const hint = document.getElementById('hint');
+const playText = document.getElementById('play-text');
+const testMode = location.hash === '#test';
+const isPlaying = () => testMode || !!document.pointerLockElement;
+if (testMode) hint.style.display = 'none';
+
 renderer.domElement.addEventListener('click', () => renderer.domElement.requestPointerLock());
 document.addEventListener('pointerlockchange', () => {
-  hint.style.display = document.pointerLockElement ? 'none' : 'flex';
+  hint.style.display = isPlaying() ? 'none' : 'flex';
+  playText.textContent = 'Paused — click to keep playing';
 });
 
 window.addEventListener('resize', () => {
@@ -93,6 +99,7 @@ renderer.setAnimationLoop((now) => {
   const dt = Math.min((now - last) / 1000, 0.05);
   last = now;
   const input = readInput();
+  if (!isPlaying()) return;
   turnCamera(input);
   player.update(dt, input, camForward);
   followPlayer();

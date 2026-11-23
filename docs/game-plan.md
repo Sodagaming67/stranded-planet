@@ -1,7 +1,7 @@
 # Stranded Planet — Game Plan
 
 ## Story
-You crash your spaceship on a tiny planet. A small town is on one side; wild land covers the rest.
+You crash your spaceship on a tiny planet covered in wild land. (The town was removed on 2026-11-23 by Philip's choice.)
 Make money to survive. Final goal: repair the ship (e.g. 10 rare parts) — or choose to stay.
 
 ## Ideas so far
@@ -18,6 +18,6 @@ Make money to survive. Final goal: repair the ship (e.g. 10 rare parts) — or c
 5. Ship repair goal, ending, sounds, saving
 
 ## Still to decide
-- Town vibe: cozy/cute or dusty frontier?
 - Dangerous creatures or peaceful?
+- Health and oxygen: Philip will add these later himself.
 - Philip's extra ideas (coming later)
