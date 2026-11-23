@@ -1,0 +1,23 @@
+# Stranded Planet — Game Plan
+
+## Story
+You crash your spaceship on a tiny planet. A small town is on one side; wild land covers the rest.
+Make money to survive. Final goal: repair the ship (e.g. 10 rare parts) — or choose to stay.
+
+## Ideas so far
+- Tiny round planet with gravity pulling toward the center (walk all the way around).
+- Money: mining crystals, odd jobs for townspeople, alien farming, selling crash scrap, fishing.
+- Survival: hunger + oxygen bars, day/night (nights cold/dangerous), rent at the inn or build a house.
+- Spending: better tools, jetpack, bigger oxygen tank, furniture.
+
+## Build stages
+1. Round planet, gravity, walking, jumping, camera
+2. Town, NPCs to talk to, shop
+3. Mining, selling, money, hunger + oxygen
+4. Jobs, farming, day/night, house
+5. Ship repair goal, ending, sounds, saving
+
+## Still to decide
+- Town vibe: cozy/cute or dusty frontier?
+- Dangerous creatures or peaceful?
+- Philip's extra ideas (coming later)
