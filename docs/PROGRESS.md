@@ -69,6 +69,9 @@
   - Rules in `src/economy.js`: aliens sell items, heal, rent hotel rooms, run the bank. Hotels charge every night at 9 PM; no coins = you lose the room. Only an alien who works there can serve, only while open. Messages pop up on screen.
   - Tested with pretend aliens (scratch test): renting, nightly charges, eviction, shopping, healing, bank swap/deposit, closed shop.
 
+- **Aliens, jobs, talking, bag, day/night (2026-11-23)** - see `docs/aliens-setup.md`
+  - 37 aliens with daily plans; press E to talk and click options; 5 jobs the player can do for pay from alien managers; bag (B) with eating, drinking and reading; library cards and borrowed books; day/night sky with glowing windows.
+
 ## Untested by a human
 - How the controls *feel* (speed, jump height, mouse sensitivity).
 - Camera can go inside trees or through house walls when it is right behind one.

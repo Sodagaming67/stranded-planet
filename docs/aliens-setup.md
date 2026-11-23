@@ -1,6 +1,33 @@
-# Ready for the aliens
+# The aliens
 
-Everything the alien NPCs need is built. When aliens are added, they only have to walk to their spot and call these.
+The aliens are in the game (`src/npcs.js`): 18 workers (one per worker spot), 5 helpers who do the same jobs the player can do, and 14 citizens with no job. 12 of the workers are managers (the first worker of each building).
+
+## Daily plans
+Every alien follows the same plan every day (`plan` = list of stops with a time, a place, and what they are doing):
+- Workers walk from their home (near work) to their counter before opening, work their shift, relax at the tavern or plaza, then walk home to sleep (they disappear while asleep).
+- Helpers (courier, bread runner, room cleaner, shelf stocker, book sorter) go from task to task during the day.
+- Citizens run errands: shops that are open, the plaza, walks, dinner at the tavern, then home.
+- They walk on the walking map in `src/navigation.js` (streets, plaza, stairs, doorways, and walking spots inside every building) using A* path finding.
+
+## Talking (press E near an alien, then click an option)
+- Everyone: who are you, what do you do every day, where are you going.
+- Workers at their counter: buy things, rent/check out of rooms, healing, banking, library card, borrow/return books.
+- Managers: ask for a job, get paid when done, quit. Citizens: tips. Helpers: what they're working on.
+
+## Player jobs (`src/jobs.js`)
+Parcel delivery (Post Office, 3 silver per parcel), bread delivery (Bakery, 3 each), room cleaning (Inn & Hotel, 2 each), stocking shelves (General Store, 2 each), sorting books (Library, 2 each). Glowing markers show the tasks; press E at each; go back to the manager to get paid.
+
+## Bag (press B)
+Eat food (gives health), drink potions, read books. Borrowed library books are due back in 3 days (you need a library card).
+
+## Day and night
+The sun rises at 6 AM and sets at 6 PM. The sky goes blue in the day and dark with stars at night; windows and lanterns glow after dark.
+
+## Test shortcuts
+`#test-town`, `#test-in=bakery`, plus `&time=21` (start at 9 PM) and `&talk` (start talking to the nearest alien).
+
+---
+
 
 ## Who works where
 - `alienJobs()` in `src/economy.js`: every job in town (18 right now): building, job title (Baker, Innkeeper, Doctor, Bank teller...), opening hours, and the worker spot to stand on.

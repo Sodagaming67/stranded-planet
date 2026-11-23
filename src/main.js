@@ -3,10 +3,14 @@ import { createWorld, RADIUS, heightAt } from './world.js';
 import { createPlayer } from './player.js';
 import { readInput } from './input.js';
 import { wallet } from './money.js';
-import { vaultDoors, buildingServices } from './town.js';
+import { vaultDoors, buildingServices, setNightGlow } from './town.js';
 import { towards } from './geo.js';
 import { clock } from './clock.js';
 import { setPlayer, onMessage } from './economy.js';
+import { buildNavigation } from './navigation.js';
+import { createNPCs, updateNPCs, nearestNPC, faceTowards } from './npcs.js';
+import { initJobs, updateJobs, doTaskNear, taskNear, onJobMessage } from './jobs.js';
+import { ui, openTalk, openBag, closeUI, setPrompt, updateJobPanel } from './ui.js';
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -35,15 +39,21 @@ scene.add(sun, sun.target);
 const world = createWorld(scene);
 // Test shortcuts: #test-town starts at the town gate; #test-in=BAKERY starts just inside that building.
 const lettersOf = (text) => text.toUpperCase().replace(/[^A-Z]/g, '');
-const insideName = lettersOf(decodeURIComponent(location.hash.match(/^#test-in=(.+)$/)?.[1] ?? ''));
+const insideName = lettersOf(decodeURIComponent(location.hash.match(/^#test-in=([^&]+)/)?.[1] ?? ''));
 const insideOf = insideName ? buildingServices.find((b) => lettersOf(b.name).includes(insideName)) : undefined;
-const atTown = location.hash === '#test-town';
+const atTown = location.hash.startsWith('#test-town');
 const start = insideOf
   ? { dir: insideOf.door.inside, facing: towards(insideOf.door.inside, insideOf.stations[0]?.worker ?? insideOf.door.inside) }
   : atTown
     ? { dir: world.townGate, facing: world.townGateFacing }
     : { dir: world.spawnDir, facing: world.spawnFacing };
 const player = createPlayer(scene, start.dir, start.facing);
+// Test shortcuts: add "&time=21" to start at 9 PM, "&talk" to start talking to the nearest alien.
+const startHour = location.hash.match(/time=(\d+)/);
+if (startHour) clock.minutes = Number(startHour[1]) * 60;
+buildNavigation(heightAt);
+createNPCs(scene);
+initJobs(scene);
 
 const camForward = start.facing.clone();
 let pitch = 0.25;
@@ -75,9 +85,41 @@ function followPlayer() {
   camera.lookAt(lookAt);
 
   sunSide.copy(SUN_HINT).addScaledVector(up, -SUN_HINT.dot(up)).normalize();
-  sun.position.copy(player.position).addScaledVector(up, 40).addScaledVector(sunSide, 25);
+  updateDaylight();
   sun.target.position.copy(player.position);
   skyLight.position.copy(up);
+}
+
+// Day and night: the sun rises at 6 AM, is highest at noon and sets at 6 PM. At night a soft blue moonlight shines.
+const SKY = {
+  day: new THREE.Color('#7fb2e6'),
+  night: new THREE.Color('#060a1a'),
+  dusk: new THREE.Color('#f29e6b'),
+  sun: new THREE.Color('#fff1dc'),
+  moon: new THREE.Color('#9fb4ff'),
+  lightDay: new THREE.Color('#cfe8ff'),
+  lightNight: new THREE.Color('#3a4a8a'),
+  groundDay: new THREE.Color('#4a3560'),
+  groundNight: new THREE.Color('#1a1530'),
+};
+
+function updateDaylight() {
+  const angle = ((clock.minutes / 60 - 6) / 12) * Math.PI;
+  const height = Math.sin(angle);
+  const day = THREE.MathUtils.smoothstep(height, -0.12, 0.3);
+  const dusk = Math.max(0, 1 - Math.abs(height) / 0.25);
+  const sunUp = height > -0.05;
+  sun.position.copy(player.position)
+    .addScaledVector(up, 45 * (sunUp ? Math.max(height, 0.15) : 0.6))
+    .addScaledVector(sunSide, 45 * (sunUp ? Math.cos(angle) : -0.5));
+  sun.color.copy(SKY.moon).lerp(SKY.sun, day);
+  sun.intensity = 0.45 + 2.6 * day;
+  skyLight.intensity = 0.5 + 1.5 * day;
+  skyLight.color.copy(SKY.lightNight).lerp(SKY.lightDay, day);
+  skyLight.groundColor.copy(SKY.groundNight).lerp(SKY.groundDay, day);
+  scene.background.copy(SKY.night).lerp(SKY.day, day).lerp(SKY.dusk, dusk * 0.45);
+  world.stars.opacity = 1 - day;
+  setNightGlow(1 - day);
 }
 
 const healthFill = document.getElementById('health-fill');
@@ -88,15 +130,17 @@ let shownNotice = '';
 let message = '';
 let messageUntil = 0;
 setPlayer(player);
-onMessage((text) => {
+const showMessage = (text) => {
   message = text;
   messageUntil = performance.now() + 6000;
-});
+};
+onMessage(showMessage);
+onJobMessage(showMessage);
 
 function updateNotice() {
   const vault = vaultDoors.find((v) => !v.isOpen && v.position.distanceTo(player.position) < 3.5);
   let text = vault ? `The ${vault.name.toLowerCase()} is locked. Only the aliens who work at the bank can open it.` : '';
-  if (performance.now() < messageUntil) text = message;
+  if (performance.now() < messageUntil && !ui.open) text = message;
   if (text === shownNotice) return;
   shownNotice = text;
   notice.textContent = text;
@@ -127,14 +171,49 @@ function updateHud() {
 const hint = document.getElementById('hint');
 const playText = document.getElementById('play-text');
 const testMode = location.hash.startsWith('#test');
-const isPlaying = () => testMode || !!document.pointerLockElement;
+const isPlaying = () => testMode || ui.open || !!document.pointerLockElement;
 if (testMode) hint.style.display = 'none';
 
-renderer.domElement.addEventListener('click', () => renderer.domElement.requestPointerLock());
+renderer.domElement.addEventListener('click', () => {
+  if (!ui.open) renderer.domElement.requestPointerLock();
+});
 document.addEventListener('pointerlockchange', () => {
   hint.style.display = isPlaying() ? 'none' : 'flex';
   playText.textContent = 'Paused — click to keep playing';
 });
+
+// Opening a menu frees the mouse so you can click options; closing it goes back to playing.
+function openMenu(open) {
+  open((resume) => {
+    if (resume && !testMode) renderer.domElement.requestPointerLock();
+    else hint.style.display = isPlaying() ? 'none' : 'flex';
+  });
+  document.exitPointerLock();
+}
+
+addEventListener('keydown', (e) => {
+  if (e.code === 'Escape' && ui.open) closeUI(false);
+  if (!isPlaying() || e.repeat) return;
+  if (e.code === 'KeyB') {
+    if (ui.open) closeUI(true);
+    else openMenu((close) => openBag(close));
+  }
+  if (e.code === 'KeyE' && !ui.open) {
+    if (doTaskNear(player.position)) return;
+    const npc = nearestNPC(player.position, 3.2);
+    if (npc) {
+      faceTowards(npc, player.position);
+      openMenu((close) => openTalk(npc, close));
+    }
+  }
+});
+
+function updatePrompt() {
+  const task = taskNear(player.position);
+  if (task) return setPrompt(`<b>E</b> ${task.label}`);
+  const npc = nearestNPC(player.position, 3.2);
+  setPrompt(npc ? `<b>E</b> Talk to ${npc.name} (${npc.kind === 'citizen' ? 'citizen' : npc.role.toLowerCase()})` : '');
+}
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
@@ -148,12 +227,24 @@ renderer.setAnimationLoop((now) => {
   last = now;
   const input = readInput();
   if (!isPlaying()) return;
+  if (ui.open) Object.assign(input, { forward: 0, right: 0, jump: false, dx: 0, dy: 0 });
   turnCamera(input);
   player.update(dt, input, camForward);
   followPlayer();
   clock.update(dt);
   world.update(now / 1000, dt);
+  updateNPCs(dt);
+  updateJobs(now / 1000);
   updateHud();
   updateNotice();
+  updatePrompt();
+  updateJobPanel();
   renderer.render(scene, camera);
 });
+
+if (location.hash.includes('talk')) {
+  setTimeout(() => {
+    const npc = nearestNPC(player.position, 80);
+    if (npc) openMenu((close) => openTalk(npc, close));
+  }, 1500);
+}

@@ -108,6 +108,18 @@ export const townWalkways = {
 };
 export const TOWN_GATE = townPoint(AXES[0], 72);
 
+// The street layout, for the aliens' walking map (navigation.js).
+export const townLayout = {
+  axes: AXES.length,
+  point: (axisIndex, x, y = 0) => townPoint(AXES[axisIndex], x, y),
+  cornerY: (x, other) => cornerY(x, other),
+  innerStreet: INNER_ST,
+  outerStreet: OUTER_ST,
+  plazaRing: PLATEAU - 3.2,
+  stairTop: PLATEAU - STAIR_LEN,
+  stairBottom: PLATEAU + STAIR_LEN,
+};
+
 const M = {
   stone: mat('#8d8478'),
   stoneWall: mat('#a39a8c'),
@@ -356,7 +368,8 @@ function buildBuilding(rand, spec) {
     boxes.push({ x: 0, z: 0, hx: w / 2 - T, hz: d / 2 - T, y0: y, y1: y + 0.3 });
   }
   const ctx = {
-    part, solid, rand, M, w, d, floorY, stations: [], rooms: [],
+    part, solid, rand, M, w, d, floorY, stations: [], rooms: [], workSpots: [],
+    nav: { nodes: { inside: [0, d / 2 - 3] }, edges: [] },
     stock: SERVICES[spec.name]?.stock,
     label: (text) => signMaterial(text, 0.6, 0.38),
   };
@@ -486,6 +499,7 @@ function buildBank(rand) {
     for (const dx of [-7.5, 7.5]) chest(cx + dx, back + 9.3);
     stacks(140, 0.7);
   });
+  bank.ctx.nav.nodes.inside = [0, d / 2 - 4];
   furnish('bankLobby', bank.ctx);
   return bank;
 }
@@ -726,21 +740,35 @@ function buildFences(batch) {
 
 const lights = [];
 export const placedBuildings = [];
+
+// Windows glow and lanterns burn brighter at night (0 = day, 1 = night).
+export function setNightGlow(night) {
+  M.window.emissive.set('#ffb347');
+  M.window.emissiveIntensity = night * 0.9;
+  M.flame.emissiveIntensity = 1.5 + night * 1.5;
+}
 // For each building: a spot outside its front door and a spot just inside (used by tests, and by NPCs later).
 export const buildingDoors = [];
 // For each building: what it offers (from services.js) and where workers and customers stand.
 export const buildingServices = [];
 
-function recordDoor(obj, name, outsideZ, insideZ, stations = [], rooms = []) {
+// Saves a building's walking spots (turned into planet directions), its door, worker spots, rooms and job spots.
+function recordBuilding(obj, name, outsideZ, ctx) {
   const at = (x, z) => warpPoint(obj.localToWorld(new THREE.Vector3(x, 0, z)), obj.position).normalize();
-  const door = { name, outside: at(0, outsideZ), inside: at(0, insideZ) };
+  const nodes = {};
+  for (const [key, [x, z]] of Object.entries(ctx.nav.nodes)) nodes[key] = at(x, z);
+  nodes.outside = at(0, outsideZ);
+  const door = { name, outside: nodes.outside, inside: nodes.inside };
   buildingDoors.push(door);
   buildingServices.push({
     name,
     ...SERVICES[name],
     door,
-    stations: stations.map((s) => ({ worker: at(...s.worker), customer: at(...s.customer) })),
-    rooms: rooms.map((r) => ({ number: r.number, center: at(...r.center), door: at(...r.door) })),
+    nodes,
+    edges: [['outside', 'inside'], ...ctx.nav.edges],
+    stations: ctx.stations.map((s) => ({ worker: nodes[s.worker], customer: nodes[s.customer], workerNode: s.worker, customerNode: s.customer })),
+    rooms: ctx.rooms.map((r) => ({ number: r.number, center: nodes[r.center], door: nodes[r.door], node: r.center })),
+    workSpots: ctx.workSpots.map((w) => ({ ...w, dir: nodes[w.node] })),
   });
 }
 
@@ -838,7 +866,7 @@ function buildPlaza(batch, rand) {
   const bankDepth = BANK.d + BANK.portico + 1.6;
   const bankMiddle = townPoint(AXES[0], -BANK.back + (BANK.portico + 1.6) / 2);
   footprints.push(footprintAt(bankMiddle, townPoint(AXES[0], 40), BANK.w + 0.6, bankDepth));
-  recordDoor(bank.obj, 'BANK', BANK.d / 2 + BANK.portico + 3, BANK.d / 2 - 4, bank.ctx.stations);
+  recordBuilding(bank.obj, 'BANK', BANK.d / 2 + BANK.portico + 3, bank.ctx);
 
   const well = place(makeWell(), townPoint(AXES[2], 25), TOWN_DIR);
   batch.add(well);
@@ -922,7 +950,7 @@ function placeBuilding(batch, rand, spot, spec) {
   addBoxesFrom(building.obj, building.boxes, true);
   footprints.push(spot.f);
   placedBuildings.push(spec.name);
-  recordDoor(building.obj, spec.name, spec.d / 2 + 2, spec.d / 2 - 3, building.ctx.stations, building.ctx.rooms);
+  recordBuilding(building.obj, spec.name, spec.d / 2 + 2, building.ctx);
 }
 
 function placeProp(batch, rand, dir) {

@@ -66,9 +66,21 @@ function toolkit(ctx) {
       const kinds = ctx.stock?.length ? ctx.stock : ['box'];
       ITEMS[kind ?? pick(kinds)](ctx, t, x, y, z);
     },
-    // Where a worker stands to serve, and where a customer stands to be served.
-    station(wx, wz, cx, cz) {
-      ctx.stations?.push({ worker: [wx, wz], customer: [cx, cz] });
+    // Walking spots inside the building, linked up so aliens can get around without walking through furniture.
+    node(name, x, z) {
+      ctx.nav.nodes[name] = [x, z];
+      return name;
+    },
+    link(...names) {
+      for (let i = 0; i < names.length - 1; i++) ctx.nav.edges.push([names[i], names[i + 1]]);
+    },
+    // Where a worker stands to serve, and where a customer stands to be served (both are walking spots).
+    station(worker, customer) {
+      ctx.stations.push({ worker, customer });
+    },
+    // A spot where someone doing a job here has a task (stocking a shelf, cleaning a room...).
+    workSpot(node, label) {
+      ctx.workSpots.push({ node, label });
     },
     X: ctx.w / 2 - 0.4,
     Z: ctx.d / 2 - 0.4,
@@ -211,7 +223,10 @@ function toolkit(ctx) {
       t.rug(cx, (far + near) / 2, Math.min(2.6, x1 - x0 - 1.4), 1.6);
       t.painting(cx, f + 2.2, far + inward * 0.08, 'back');
       if (ctx.label) part(box(0.6, 0.38, 0.06), ctx.label(String(number)), cx, f + 3.2, near + inward * 0.14);
-      ctx.rooms?.push({ number, center: [cx, (far + near) / 2], door: [cx, near + inward * 0.8] });
+      const door = t.node(`room${number}door`, cx, near + inward * 0.8);
+      const center = t.node(`room${number}`, cx, (far + near) / 2);
+      t.link(door, center);
+      ctx.rooms.push({ number, center, door });
     },
   };
   return t;
@@ -228,7 +243,27 @@ const ROOMS = {
     part(box(0.05, 0.25, 0.05), M.gold, counter / 2 - 1.2, f + 1.22, -t.Z + 3.3);
     t.candle(counter / 2 - 0.5, f + 1.1, -t.Z + 3.3);
     for (let x = -counter / 2 + 1.4; x < counter / 2 - 1.6; x += 0.6) t.goods(x, f + 1.1, -t.Z + 3.3);
-    t.station(0, -t.Z + 2.3, 0, -t.Z + 4.4);
+    const back = -t.Z;
+    t.node('counterFront', 0, back + 4.4);
+    t.node('counterSide', counter / 2 + 1.2, back + 4.4);
+    t.node('counterBack', counter / 2 + 1.2, back + 2.3);
+    t.node('clerk', 0, back + 2.3);
+    t.link('inside', 'counterFront', 'counterSide', 'counterBack', 'clerk');
+    t.station('clerk', 'counterFront');
+    t.node('backShelfL', -w / 4, back + 1.4);
+    t.node('backShelfR', w / 4, back + 1.4);
+    t.link('clerk', 'backShelfL');
+    t.link('counterBack', 'backShelfR');
+    t.node('laneL', -(t.X - 1.2), back + 4.4);
+    t.node('laneR', t.X - 1.2, back + 4.4);
+    t.node('sideShelfL', -(t.X - 1.2), -2);
+    t.node('sideShelfR', t.X - 1.2, -2);
+    t.link('counterFront', 'laneL', 'sideShelfL');
+    t.link('counterSide', 'laneR', 'sideShelfR');
+    t.workSpot('backShelfL', 'Stock the back shelf (left)');
+    t.workSpot('backShelfR', 'Stock the back shelf (right)');
+    t.workSpot('sideShelfL', 'Stock the left wall shelf');
+    t.workSpot('sideShelfR', 'Stock the right wall shelf');
     for (let x = -w / 2 + 4; x <= w / 2 - 4; x += 5) {
       if (Math.abs(x) < 2.5) continue;
       for (let z = -t.Z + 6.5; z < t.Z - 4; z += 4) {
@@ -288,7 +323,17 @@ const ROOMS = {
     solid(box(0.8, 1.1, deskLen), M.woodDark, deskX, f + 0.55, deskZ, f + 1.1);
     ctx.part(cyl(0.12, 0.12, 8), M.gold, deskX, f + 1.16, deskZ + deskLen / 2 - 0.4);
     t.candle(deskX, f + 1.1, deskZ - deskLen / 2 + 0.4);
-    t.station(-lobbyHalf + 0.5, deskZ, deskX + 1.3, deskZ);
+    t.node('hall', 0, zb + corridor / 2);
+    t.node('deskFront', deskX + 1.3, deskZ);
+    t.node('deskBack', -lobbyHalf + 0.5, zf + 0.4);
+    t.node('clerk', -lobbyHalf + 0.5, deskZ);
+    t.link('inside', 'hall', 'deskBack', 'clerk');
+    t.link('inside', 'deskFront');
+    t.station('clerk', 'deskFront');
+    for (const room of ctx.rooms) {
+      t.link('hall', room.door);
+      t.workSpot(room.center, `Clean room ${room.number}`);
+    }
     t.rug(1, deskZ, Math.min(4, lobbyHalf * 1.2), 2.6);
     t.bench(lobbyHalf - 0.6, deskZ, 2.4, false);
     for (const sx of [-1, 1]) t.plant(sx * (lobbyHalf - 0.7), Z - 0.8);
@@ -297,6 +342,8 @@ const ROOMS = {
 
   hospital({ w, d, M, floorY: f, part }, t) {
     const { X, Z } = t;
+    t.node('ward', 0, Z - 4.4);
+    t.link('inside', 'ward');
     for (const sx of [-1, 1]) {
       for (let z = -Z + 1.2; z < Z - 4; z += 2.6) {
         t.bed(sx * (X - 1.15), z, true, sx);
@@ -313,7 +360,12 @@ const ROOMS = {
     for (const sx of [-1, 1]) {
       const deskX = sx * (X / 2 + 1);
       const top = t.table(deskX, Z - 3, 1.8, 1, 0.85);
-      t.station(deskX, Z - 2.1, deskX, Z - 3.9);
+      const side = sx < 0 ? 'L' : 'R';
+      t.node(`doctor${side}`, deskX, Z - 2.1);
+      t.node(`patient${side}`, deskX, Z - 4.1);
+      t.link('inside', `doctor${side}`);
+      t.link('ward', `patient${side}`);
+      t.station(`doctor${side}`, `patient${side}`);
       t.chair(deskX, Z - 2.1, 0, -1);
       t.candle(deskX - 0.5, top, Z - 3);
       t.shelf(sx * (X / 2 + 1), -Z + 0.3, 3, true, 2.2, 'potion');
@@ -336,7 +388,17 @@ const ROOMS = {
       t.stool(x, -Z + 3.6);
     }
     t.shelf(0, -Z + 0.25, bar, true, 3, 'potion');
-    for (const x of [-bar / 4, bar / 4]) t.station(x, -Z + 1.6, x, -Z + 3.4);
+    t.node('aisle', 0, -Z + 4.8);
+    t.node('barSide', bar / 2 + 1, -Z + 4.8);
+    t.node('barBack', bar / 2 + 1, -Z + 1.6);
+    t.link('inside', 'aisle', 'barSide', 'barBack');
+    [-bar / 4, bar / 4].forEach((x, i) => {
+      t.node(`keeper${i}`, x, -Z + 1.6);
+      t.node(`guest${i}`, x + 0.55, -Z + 4.2);
+      t.link('barBack', `keeper${i}`);
+      t.link('aisle', `guest${i}`);
+      t.station(`keeper${i}`, `guest${i}`);
+    });
     t.fireplace(-X + 0.5, -1, 'left');
     t.rug(-X + 2.8, -1, 2.4, 3.4);
     for (let x = -X + 5; x <= X - 3; x += 4.5) {
@@ -392,16 +454,33 @@ const ROOMS = {
     for (const z of [Z - 1, Z - 2.1]) t.crate(X - 0.8, z);
     const sale = t.table(X / 2, Z - 3.5, 2.4, 1.2, 0.9);
     for (const dx of [-0.8, 0, 0.8]) t.goods(X / 2 + dx, sale, Z - 3.5, 'tool');
-    t.station(X / 2, Z - 4.5, X / 2, Z - 2.5);
+    t.node('counter', X / 2, Z - 2.5);
+    t.node('smithSide', X / 2 + 1.8, Z - 2.5);
+    t.node('smithBack', X / 2 + 1.8, Z - 4.5);
+    t.node('smith', X / 2, Z - 4.5);
+    t.link('inside', 'counter', 'smithSide', 'smithBack', 'smith');
+    t.station('smith', 'counter');
     for (let x = -X + 3; x <= X - 3; x += 6) t.lantern(x, 0);
   },
 
   books({ w, d, M, floorY: f, part }, t) {
     const { X, Z } = t;
+    const len = d * 0.5;
+    const shelves = [];
     for (let x = -X + 1.8; x <= X - 1.8; x += 3) {
       if (Math.abs(x) < 2.5) continue;
-      const len = d * 0.5;
       t.shelf(x, -Z + 0.6 + len / 2, len, false, 3.6, 'book');
+      shelves.push(x);
+    }
+    t.node('stacks', 0, -Z + 0.6 + len + 1.2);
+    t.link('inside', 'stacks');
+    for (let i = 0; i < shelves.length - 1; i++) {
+      if (shelves[i + 1] - shelves[i] > 3.5) continue;
+      const ax = (shelves[i] + shelves[i + 1]) / 2;
+      t.node(`aisleEnd${i}`, ax, -Z + 0.6 + len + 1.2);
+      t.node(`aisle${i}`, ax, -Z + 0.6 + len / 2);
+      t.link('stacks', `aisleEnd${i}`, `aisle${i}`);
+      t.workSpot(`aisle${i}`, 'Put books back on a shelf');
     }
     part(box(0.1, 3.4, 0.6), M.wood, -X + 4.6, f + 1.7, -Z + 4);
     for (const sx of [-1, 1]) {
@@ -421,7 +500,12 @@ const ROOMS = {
     const deskTop = t.table(-2.4, Z - 1.6, 1.6, 0.9, 1);
     t.candle(-2.4, deskTop, Z - 1.6);
     t.goods(-2.0, deskTop, Z - 1.6, 'book');
-    t.station(-2.4, Z - 2.4, -2.4, Z - 0.6);
+    t.node('librarian', -2.4, Z - 2.4);
+    t.node('entry', 0, Z - 0.9);
+    t.node('reader', -2.4, Z - 0.6);
+    t.link('inside', 'librarian');
+    t.link('inside', 'entry', 'reader');
+    t.station('librarian', 'reader');
     for (let x = -X + 3; x <= X - 3; x += 6) t.lantern(x, -1);
   },
 
@@ -443,12 +527,29 @@ const ROOMS = {
     for (const z of [Z - 3.2, Z - 4.8]) part(box(0.5, 0.4, 0.8), M.woodDark, X - 0.45, f + 1.55, z);
     for (const z of [Z - 1.5, Z - 3]) part(box(1.3, 0.75, 0.85), M.hay, -X + 1, f + 0.38, z);
     t.lantern(0, 0);
-    t.station(0, -Z + 4.6, 0, Z - 3);
+    t.node('hand', 0, -Z + 4.6);
+    t.node('rider', 0, Z - 3);
+    t.link('inside', 'hand');
+    t.link('inside', 'rider');
+    t.station('hand', 'rider');
   },
 
   bankLobby({ w, d, M, floorY: f, part }, t) {
     const { X, Z } = t;
-    for (const x of [-12, -6, 0, 6, 12]) t.station(x, 0.6, x, 2.7);
+    t.node('lobby', 0, 2.8);
+    t.link('inside', 'lobby');
+    for (const sx of [-1, 1]) {
+      t.node(`tellerLane${sx}`, sx * 17.5, 2.8);
+      t.node(`tellerBack${sx}`, sx * 17.5, 0.6);
+      t.link('lobby', `tellerLane${sx}`, `tellerBack${sx}`);
+    }
+    for (const x of [-12, -6, 0, 6, 12]) {
+      t.node(`teller${x}`, x, 0.6);
+      t.node(`client${x}`, x, 2.8);
+      t.link('lobby', `client${x}`);
+      t.link(`tellerBack${x <= 0 ? -1 : 1}`, `teller${x}`);
+      t.station(`teller${x}`, `client${x}`);
+    }
     part(box(3.4, 0.04, Z - 2.4), M.carpet, 0, f + 0.02, (Z + 2.4) / 2);
     for (const sx of [-1, 1]) {
       for (let z = 3.5; z < Z - 2; z += 3.5) t.bench(sx * (X - 0.6), z, 2.6, false);

@@ -187,7 +187,8 @@ function createSky(scene) {
   }
   const starGeo = new THREE.BufferGeometry();
   starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
-  scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: '#ffffff', size: 1.6, sizeAttenuation: false })));
+  const starMaterial = new THREE.PointsMaterial({ color: '#ffffff', size: 1.6, sizeAttenuation: false, transparent: true });
+  scene.add(new THREE.Points(starGeo, starMaterial));
 
   const giant = new THREE.Group();
   giant.add(new THREE.Mesh(new THREE.IcosahedronGeometry(40, 2), new THREE.MeshBasicMaterial({ color: '#e07a5f' })));
@@ -203,6 +204,7 @@ function createSky(scene) {
   const moon = new THREE.Mesh(new THREE.IcosahedronGeometry(12, 1), new THREE.MeshBasicMaterial({ color: '#cdd3e0' }));
   moon.position.set(350, -120, 240);
   scene.add(moon);
+  return starMaterial;
 }
 
 function scatterDecorations(things, rand) {
@@ -234,7 +236,7 @@ function scatterDecorations(things, rand) {
 }
 
 export function createWorld(scene) {
-  createSky(scene);
+  const stars = createSky(scene);
   scene.add(createPlanet());
 
   const things = new THREE.Group();
@@ -272,6 +274,7 @@ export function createWorld(scene) {
     spawnDir,
     spawnFacing: towards(spawnDir, SHIP_DIR),
     townGate,
+    stars,
     townGateFacing: towards(townGate, TOWN_DIR),
     update(t, dt) {
       ship.update(t);
