@@ -3,7 +3,7 @@ import {
   RADIUS, SHIP_DIR, colliders, toAngle, makeRandom, randomDir, tangentBasis, towards, addCollider, placeAt,
   mat, mesh, box, grassColor, Batcher,
 } from './geo.js';
-import { TOWN_DIR, TOWN_CORE, TOWN_EDGE, dirToLocal, localToDir, townHeight, createTown } from './town.js';
+import { TOWN_DIR, TOWN_CORE, TOWN_EDGE, TOWN_GATE, townHeight, createTown } from './town.js';
 
 export { RADIUS, SHIP_DIR, colliders };
 
@@ -31,10 +31,9 @@ const waves = Array.from({ length: 18 }, (_, i) => ({
 export function heightAt(dir) {
   let h = 0;
   for (const w of waves) h += w.a * Math.sin(w.k * dir.dot(w.d) + w.ph);
-  const { u, v } = dirToLocal(dir);
-  const fromTown = Math.hypot(u, v);
+  const fromTown = dir.angleTo(TOWN_DIR) * RADIUS;
   h *= Math.min(away(dir, SHIP_DIR, 4, 12), THREE.MathUtils.smoothstep(fromTown, TOWN_CORE, TOWN_EDGE));
-  return fromTown < TOWN_CORE ? h + townHeight(u, v) : h;
+  return fromTown < TOWN_CORE ? h + townHeight(dir) : h;
 }
 
 const PATH_NORMAL = new THREE.Vector3().crossVectors(SHIP_DIR, TOWN_DIR).normalize();
@@ -267,9 +266,7 @@ export function createWorld(scene) {
   const spawnAngle = toAngle(8);
   const spawnDir = SHIP_DIR.clone().multiplyScalar(Math.cos(spawnAngle)).addScaledVector(spawnAway, Math.sin(spawnAngle)).normalize();
 
-  const shipInTown = dirToLocal(SHIP_DIR);
-  const gate = Math.hypot(shipInTown.u, shipInTown.v);
-  const townGate = localToDir((shipInTown.u / gate) * 58, (shipInTown.v / gate) * 58);
+  const townGate = TOWN_GATE.clone();
 
   return {
     spawnDir,

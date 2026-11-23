@@ -1,138 +1,108 @@
 import * as THREE from 'three';
 import {
-  RADIUS, SHIP_DIR, makeRandom, tangentBasis, towards, addCollider, addBox, placeAt, mat, mesh, box, grassColor, Batcher,
+  RADIUS, SHIP_DIR, makeRandom, tangentBasis, towards, addCollider, addBox, placeAt, warpPoint,
+  mat, mesh, box, grassColor, Batcher,
 } from './geo.js';
 
-export const TOWN_DIR = new THREE.Vector3(0, Math.cos(1.15), Math.sin(1.15));
-export const TOWN_CORE = 58;
-export const TOWN_EDGE = 68;
-const LEVEL_H = 3.5;
-const STAIR_HALF = 1.7;
-const STAIR_LEN = 3;
-const STEPS = 8;
-const RING0 = 35.5;
-const RING1_IN = 4.4;
-const RING_OUT = 55;
-const LANE_OUT = 3.8;
-const SETBACK = 1.3;
-const [T1, T2] = tangentBasis(TOWN_DIR);
+// The town sits on the far side of the planet from the ship.
+export const TOWN_DIR = new THREE.Vector3(0, Math.cos(2.6), Math.sin(2.6));
+export const TOWN_CORE = 88;
+export const TOWN_EDGE = 98;
 
-// The town is laid out on a flat map (u, v) that gets wrapped onto the planet.
-export function localToDir(u, v) {
-  const d = Math.hypot(u, v);
-  if (d < 1e-6) return TOWN_DIR.clone();
-  const s = Math.sin(d / RADIUS) / d;
-  return TOWN_DIR.clone().multiplyScalar(Math.cos(d / RADIUS)).addScaledVector(T1, u * s).addScaledVector(T2, v * s);
+const SCALE = Math.sqrt(10); // buildings have 10x the floor space they used to
+const LEVEL_H = 4.5;
+const PLATEAU = 31; // the raised bank plaza is a square, 31 from the middle to each side
+const STAIR_HALF = 1.8;
+const STAIR_LEN = 3.5;
+const STEPS = 10;
+const INNER_ST = 35; // street around the plaza
+const INNER_HALF = 2.6;
+const FRONT = 38.2; // where the building fronts start
+const OUTER_ST = 62; // back street behind the buildings
+const OUTER_HALF = 2.4;
+const CROSS_HALF = 3; // the 4 streets that cut through the rows
+const FLOOR_H = 3.8;
+
+// Directions across the town. T1 points toward the ship, so the main street leads home.
+const T1 = towards(TOWN_DIR, SHIP_DIR);
+const T2 = new THREE.Vector3().crossVectors(TOWN_DIR, T1);
+const AXES = [T1, T2, T1.clone().negate(), T2.clone().negate()].map((a) => ({ a, b: new THREE.Vector3().crossVectors(TOWN_DIR, a) }));
+
+// A spot in town: `x` steps out from the middle along an axis, then `y` steps sideways along that row.
+function townPoint(axis, x, y = 0) {
+  const p = TOWN_DIR.clone().multiplyScalar(Math.cos(x / RADIUS)).addScaledVector(axis.a, Math.sin(x / RADIUS));
+  return p.multiplyScalar(Math.cos(y / RADIUS)).addScaledVector(axis.b, Math.sin(y / RADIUS)).normalize();
 }
 
-export function dirToLocal(dir) {
-  const tu = dir.dot(T1);
-  const tv = dir.dot(T2);
-  const s = Math.hypot(tu, tv);
-  if (s < 1e-9) return { u: 0, v: 0 };
-  const d = Math.acos(THREE.MathUtils.clamp(dir.dot(TOWN_DIR), -1, 1)) * RADIUS;
-  return { u: (tu / s) * d, v: (tv / s) * d };
+// The reverse: how far out along the axis a spot is, and how far sideways along its row.
+function rowCoords(dir, axis) {
+  const da = dir.dot(axis.a);
+  const dt = dir.dot(TOWN_DIR);
+  const x = Math.atan2(da, dt);
+  const along = Math.cos(x) * dt + Math.sin(x) * da;
+  return { x: x * RADIUS, y: Math.atan2(dir.dot(axis.b), along) * RADIUS };
 }
 
-const shipLocal = dirToLocal(SHIP_DIR);
-const SHIP_ANGLE = Math.atan2(shipLocal.v, shipLocal.u);
+// Direction pointing away from the town middle, across a row line.
+const rowNormal = (axis, x) => axis.a.clone().multiplyScalar(Math.cos(x / RADIUS)).addScaledVector(TOWN_DIR, -Math.sin(x / RADIUS));
 
-const LEVELS = [
-  {
-    center: { u: 0, v: 0 },
-    radius: (t) => 27 + 2 * Math.sin(3 * t) + Math.sin(5 * t + 1),
-    stairAngles: [0, 1, 2, 3].map((k) => SHIP_ANGLE + (k * Math.PI) / 2),
-  },
-  {
-    center: { u: 3, v: -2 },
-    radius: (t) => 12.5 + 0.8 * Math.sin(4 * t + 2),
-    stairAngles: [0.4, 2.5, 4.6].map((a) => SHIP_ANGLE + a),
-  },
-];
-LEVELS.forEach((lv, i) => {
-  lv.low = i * LEVEL_H;
-  lv.high = (i + 1) * LEVEL_H;
-  lv.stairs = lv.stairAngles.map((t) => {
-    const axis = { u: Math.cos(t), v: Math.sin(t) };
-    const r = lv.radius(t);
-    return { axis, at: { u: lv.center.u + axis.u * r, v: lv.center.v + axis.v * r } };
-  });
-});
-
-const pointAlong = (s, a) => ({ u: s.at.u + s.axis.u * a, v: s.at.v + s.axis.v * a });
-
-function stairAt(lv, u, v, extra = 0) {
-  for (const s of lv.stairs) {
-    const pu = u - s.at.u;
-    const pv = v - s.at.v;
-    const along = pu * s.axis.u + pv * s.axis.v;
-    const across = Math.abs(pu * s.axis.v - pv * s.axis.u);
-    if (across < STAIR_HALF + extra && Math.abs(along) < STAIR_LEN + extra) return along;
+function stairAt(dir) {
+  for (const axis of AXES) {
+    const { x, y } = rowCoords(dir, axis);
+    if (Math.abs(y) < STAIR_HALF && Math.abs(x - PLATEAU) < STAIR_LEN) return x - PLATEAU;
   }
   return null;
 }
 
-const nearStairs = (u, v, extra) => LEVELS.some((lv) => stairAt(lv, u, v, extra) !== null);
-
-function levelAmount(lv, u, v) {
-  const along = stairAt(lv, u, v);
-  if (along !== null) return (STAIR_LEN - along) / (2 * STAIR_LEN);
-  const du = u - lv.center.u;
-  const dv = v - lv.center.v;
-  const inside = lv.radius(Math.atan2(dv, du)) - Math.hypot(du, dv);
-  return THREE.MathUtils.smoothstep(inside, -0.7, 0.7);
+function plateauInside(dir) {
+  let inside = Infinity;
+  for (const axis of AXES) inside = Math.min(inside, PLATEAU - rowCoords(dir, axis).x);
+  return inside;
 }
 
-export function townHeight(u, v) {
-  return LEVEL_H * (levelAmount(LEVELS[0], u, v) + levelAmount(LEVELS[1], u, v));
+export function townHeight(dir) {
+  const along = stairAt(dir);
+  if (along !== null) return (LEVEL_H * (STAIR_LEN - along)) / (2 * STAIR_LEN);
+  return LEVEL_H * THREE.MathUtils.smoothstep(plateauInside(dir), -0.8, 0.8);
 }
 
-// Roads, stairs and the plaza are saved so alien NPCs can walk along them later.
+// Streets (saved for alien NPCs to walk on later). A "ring" street runs along a row line;
+// a "cross" street runs straight out from the middle along an axis.
+// Where the row line `x` out along one axis meets the row line `other` out along the next axis.
+// (On a small round planet these "square" lines bend toward each other near the corners.)
+const cornerY = (x, other = x) => Math.atan(Math.tan(other / RADIUS) * Math.cos(x / RADIUS)) * RADIUS;
+
 export const townRoads = [];
-function road(points, half) {
-  for (let i = 0; i < points.length - 1; i++) townRoads.push({ a: points[i], b: points[i + 1], half });
+for (const axis of AXES) {
+  const inner = cornerY(INNER_ST) + INNER_HALF;
+  const outer = cornerY(OUTER_ST) + OUTER_HALF;
+  townRoads.push({ kind: 'ring', axis, x: INNER_ST, from: -inner, to: inner, half: INNER_HALF });
+  townRoads.push({ kind: 'ring', axis, x: OUTER_ST, from: -outer, to: outer, half: OUTER_HALF });
+  const end = axis.a === T1 ? TOWN_EDGE + 3 : OUTER_ST + 8;
+  townRoads.push({ kind: 'cross', axis, from: PLATEAU + STAIR_LEN, to: end, half: CROSS_HALF });
 }
-function ringPoints(radiusAt, n = 96) {
-  return Array.from({ length: n + 1 }, (_, i) => {
-    const t = (i / n) * Math.PI * 2;
-    const r = radiusAt(t);
-    return { u: r * Math.cos(t), v: r * Math.sin(t) };
-  });
-}
-road(ringPoints(() => RING0), 1.8);
-road(ringPoints((t) => LEVELS[0].radius(t) - RING1_IN), 1.4);
-road(ringPoints(() => RING_OUT), 1.6);
-road(ringPoints((t) => LEVELS[1].radius(t) + LANE_OUT).map((p) => ({ u: p.u + LEVELS[1].center.u, v: p.v + LEVELS[1].center.v })), 1.2);
-LEVELS[0].stairs.forEach((s, i) => {
-  const end = i === 0 ? TOWN_EDGE + 2 : TOWN_CORE + 4;
-  road([pointAlong(s, STAIR_LEN), { u: s.axis.u * end, v: s.axis.v * end }], 1.6);
-});
-for (const s of LEVELS[1].stairs) {
-  let b = pointAlong(s, STAIR_LEN);
-  for (let k = 0; k < 40; k++) {
-    b = pointAlong(s, STAIR_LEN + k * 0.5);
-    if (Math.hypot(b.u, b.v) >= LEVELS[0].radius(Math.atan2(b.v, b.u)) - RING1_IN) break;
+
+function roadGap(dir) {
+  let best = Infinity;
+  for (const r of townRoads) {
+    const { x, y } = rowCoords(dir, r.axis);
+    if (r.kind === 'ring') {
+      if (y >= r.from && y <= r.to) best = Math.min(best, Math.abs(x - r.x) - r.half);
+    } else if (x >= r.from && x <= r.to) {
+      best = Math.min(best, Math.abs(y) - r.half);
+    }
   }
-  road([pointAlong(s, STAIR_LEN), b], 1.4);
+  return best;
 }
 
 export const townWalkways = {
   roads: townRoads,
-  stairs: LEVELS.flatMap((lv) => lv.stairs.map((s) => ({ bottom: pointAlong(s, STAIR_LEN), top: pointAlong(s, -STAIR_LEN) }))),
-  plaza: { center: LEVELS[1].center, radius: 7 },
-  toDir: localToDir,
+  stairs: AXES.map((axis) => ({ bottom: townPoint(axis, PLATEAU + STAIR_LEN), top: townPoint(axis, PLATEAU - STAIR_LEN) })),
+  plaza: { center: TOWN_DIR.clone(), halfSize: PLATEAU - 1 },
+  get doors() { return buildingDoors; },
+  point: (axisIndex, x, y) => townPoint(AXES[axisIndex], x, y),
 };
-
-function roadGap(u, v) {
-  let best = Infinity;
-  for (const { a, b, half } of townRoads) {
-    const abu = b.u - a.u;
-    const abv = b.v - a.v;
-    const t = THREE.MathUtils.clamp(((u - a.u) * abu + (v - a.v) * abv) / (abu * abu + abv * abv), 0, 1);
-    best = Math.min(best, Math.hypot(u - a.u - abu * t, v - a.v - abv * t) - half);
-  }
-  return best;
-}
+export const TOWN_GATE = townPoint(AXES[0], 72);
 
 const M = {
   stone: mat('#8d8478'),
@@ -162,64 +132,65 @@ const M = {
 };
 
 const pick = (rand, list) => list[Math.floor(rand() * list.length)];
-const WALL_STYLES = [
-  { wall: M.plaster, frame: true },
-  { wall: M.plasterWarm, frame: true },
-  { wall: M.planks[0] },
-  { wall: M.planks[1] },
-  { wall: M.planks[2] },
-  { wall: M.stoneWall },
-];
-const HOUSE_SIZES = [
-  { w: 5, d: 4.5, h: 3 },
-  { w: 6.5, d: 5, h: 3.2 },
-  { w: 8, d: 5, h: 3 },
-  { w: 5, d: 5, h: 4.8 },
-];
 
-const shop = (name, extra = {}) => ({ name, w: 6.5, d: 5, h: 3.6, door: 1.8, awning: true, inside: 'shop', wall: M.planks[2], ...extra });
-const hotel = (name) => ({ name, w: 10, d: 6, h: 6.4, door: 2, balcony: true, inside: 'beds', wall: M.planks[0] });
+// Sizes are the old building sizes; `big` gives them 10x the floor space.
+const big = (spec) => ({
+  ...spec,
+  w: spec.w * SCALE,
+  d: spec.d * SCALE,
+  h: spec.h * SCALE,
+  door: spec.door ?? 2.8,
+  doorH: spec.doorH ?? 3.8,
+});
+const shop = (name, extra = {}) => big({ name, w: 6.5, d: 5, h: 3.6, awning: true, inside: 'shop', wall: M.planks[2], ...extra });
+const hotel = (name) => big({ name, w: 10, d: 6, h: 6.4, door: 3.2, doorH: 4.2, balcony: true, inside: 'beds', wall: M.planks[0] });
 
-// Every one of these gets built first; then the district fills up with MORE_SHOPS.
+// Every one of these gets built first; then the rows fill up with EXTRA_SHOPS.
 const SHOP_TYPES = [
   hotel('INN & HOTEL'),
-  { name: 'HOSPITAL', w: 11, d: 6, h: 4.6, door: 2.2, inside: 'beds', wall: M.stoneWall },
-  shop('GENERAL STORE', { w: 7.5, d: 5.5, h: 3.8, wall: M.plaster, frame: true, door: 2 }),
-  { name: 'TAVERN', w: 9, d: 6, h: 4.2, door: 2, inside: 'tavern', wall: M.planks[1] },
-  { name: 'BLACKSMITH', w: 7, d: 5.5, h: 3.6, door: 2.2, inside: 'forge', wall: M.stoneWall, chimney: true },
+  big({ name: 'HOSPITAL', w: 11, d: 6, h: 4.6, door: 3.4, doorH: 4.2, inside: 'beds', wall: M.stoneWall }),
+  shop('GENERAL STORE', { w: 7.5, d: 5.5, h: 3.8, wall: M.plaster, frame: true }),
+  big({ name: 'TAVERN', w: 9, d: 6, h: 4.2, inside: 'tavern', wall: M.planks[1] }),
+  big({ name: 'BLACKSMITH', w: 7, d: 5.5, h: 3.6, door: 3.2, inside: 'forge', wall: M.stoneWall, chimney: true }),
   shop('BAKERY', { wall: M.plasterWarm, frame: true, chimney: true }),
   shop('POST OFFICE', { wall: M.plaster, frame: true, awning: false }),
   shop('TAILOR'),
-  { name: 'LIBRARY', w: 8, d: 5.5, h: 4.8, door: 2, inside: 'books', wall: M.stoneWall },
+  big({ name: 'LIBRARY', w: 8, d: 5.5, h: 4.8, door: 3, inside: 'books', wall: M.stoneWall }),
 ];
-const MORE_SHOPS = [
+const EXTRA_SHOPS = [
   shop('GROCER', { wall: M.planks[1] }),
-  hotel('HOTEL'),
   shop('POTION SHOP', { wall: M.plaster, frame: true }),
-  { name: 'CLINIC', w: 8, d: 5.5, h: 3.8, door: 2, inside: 'beds', wall: M.stoneWall },
+  big({ name: 'CLINIC', w: 8, d: 5.5, h: 3.8, inside: 'beds', wall: M.stoneWall }),
   shop('CARPENTER', { wall: M.planks[0], awning: false }),
   shop('BUTCHER', { wall: M.plasterWarm, frame: true }),
   shop('TOY SHOP', { wall: M.planks[2] }),
-  { name: 'BOOK SHOP', w: 6.5, d: 5, h: 3.8, door: 1.8, inside: 'books', wall: M.plaster, frame: true },
+  big({ name: 'BOOK SHOP', w: 6.5, d: 5, h: 3.8, inside: 'books', wall: M.plaster, frame: true }),
   shop('FARM SUPPLY', { wall: M.planks[1], awning: false }),
   hotel('BOARDING HOUSE'),
+  shop('CANDLE MAKER', { wall: M.plasterWarm, frame: true }),
+  shop('POTTER', { wall: M.planks[0] }),
+  // Narrower ones that fill the leftover gaps at the ends of rows.
+  shop('HERBALIST', { w: 4, d: 5.7, h: 3.4, wall: M.plaster, frame: true, awning: false }),
+  shop('SHOEMAKER', { w: 4, d: 5.7, h: 3.4, wall: M.planks[1], awning: false }),
+  shop('CHEESE SHOP', { w: 4, d: 5.7, h: 3.4, wall: M.plasterWarm, frame: true, awning: false }),
+  shop('STABLE', { w: 4.2, d: 5.7, h: 3.4, wall: M.planks[0], awning: false, inside: 'none' }),
 ];
 
 function signMaterial(text, w, h, colors = {}) {
   if (typeof document === 'undefined') return M.signBoard;
   const canvas = document.createElement('canvas');
-  canvas.width = 512;
-  canvas.height = Math.round((512 * h) / w);
+  canvas.width = 1024;
+  canvas.height = Math.round((1024 * h) / w);
   const g = canvas.getContext('2d');
   g.fillStyle = colors.bg ?? '#5a3a22';
   g.fillRect(0, 0, canvas.width, canvas.height);
   g.strokeStyle = colors.edge ?? '#2e1d10';
-  g.lineWidth = 10;
-  g.strokeRect(5, 5, canvas.width - 10, canvas.height - 10);
+  g.lineWidth = 16;
+  g.strokeRect(8, 8, canvas.width - 16, canvas.height - 16);
   let size = Math.round(canvas.height * 0.55);
   const font = () => `bold ${size}px Georgia, 'Times New Roman', serif`;
   g.font = font();
-  while (g.measureText(text).width > canvas.width - 50 && size > 12) {
+  while (g.measureText(text).width > canvas.width - 80 && size > 12) {
     size -= 2;
     g.font = font();
   }
@@ -229,21 +200,27 @@ function signMaterial(text, w, h, colors = {}) {
   g.fillText(text, canvas.width / 2, canvas.height / 2 + 2);
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
-  texture.anisotropy = 4;
+  texture.anisotropy = 8;
   return new THREE.MeshStandardMaterial({ map: texture, roughness: 0.9 });
 }
 
+// Evenly spaced spots along a wall of length `len`, about every `gap` steps.
+function spread(len, gap, edge = 1.5) {
+  const n = Math.max(1, Math.floor((len - 2 * edge) / gap));
+  return Array.from({ length: n }, (_, i) => -len / 2 + edge + ((i + 0.5) * (len - 2 * edge)) / n);
+}
+
 function buildBuilding(rand, spec) {
-  const style = spec.wall ? spec : pick(rand, WALL_STYLES);
+  const wallMat = spec.wall;
   const roofMat = spec.roof ?? pick(rand, M.roofs);
   const { w, d } = spec;
   const wallH = spec.h;
   const g = new THREE.Group();
   const boxes = [];
-  const T = 0.3;
-  const BASE = spec.base ?? 0.25;
-  const DOOR = spec.door ?? 1.6;
-  const DOOR_H = spec.doorH ?? 2.6;
+  const T = 0.4;
+  const BASE = spec.base ?? 0.3;
+  const DOOR = spec.door;
+  const DOOR_H = spec.doorH;
   const top = BASE + wallH;
   const part = (geo, material, x, y, z) => {
     const m = new THREE.Mesh(geo, material);
@@ -259,13 +236,13 @@ function buildBuilding(rand, spec) {
     return m;
   };
   const wall = (x, z, bw, bd, y0 = 0) => {
-    part(box(bw, wallH - y0, bd), style.wall, x, BASE + (y0 + wallH) / 2, z);
+    part(box(bw, wallH - y0, bd), wallMat, x, BASE + (y0 + wallH) / 2, z);
     boxes.push({ x, z, hx: bw / 2, hz: bd / 2, y0: y0 === 0 ? -2 : BASE + y0, y1: top });
   };
 
-  part(box(w + 0.5, BASE + 1, d + 0.5), M.stone, 0, (BASE - 1) / 2, 0);
+  part(box(w + 0.6, BASE + 1, d + 0.6), M.stone, 0, (BASE - 1) / 2, 0);
   part(box(w - 2 * T, 0.06, d - 2 * T), M.floor, 0, BASE + 0.03, 0);
-  boxes.push({ x: 0, z: 0, hx: w / 2 + 0.25, hz: d / 2 + 0.25, y0: -2, y1: BASE + 0.06 });
+  boxes.push({ x: 0, z: 0, hx: w / 2 + 0.3, hz: d / 2 + 0.3, y0: -2, y1: BASE + 0.06 });
 
   const seg = (w - DOOR) / 2;
   wall(0, -d / 2 + T / 2, w, T);
@@ -275,15 +252,22 @@ function buildBuilding(rand, spec) {
   wall(w / 2 - seg / 2, d / 2 - T / 2, seg, T);
   wall(0, d / 2 - T / 2, DOOR, T, DOOR_H);
 
-  if (style.frame) {
-    for (const sx of [-1, 1]) {
-      for (const sz of [-1, 1]) part(box(0.4, wallH, 0.4), M.timber, sx * (w / 2 - 0.15), BASE + wallH / 2, sz * (d / 2 - 0.15));
-      part(box(0.4, 0.3, d), M.timber, sx * (w / 2 - 0.15), top - 0.15, 0);
-      part(box(0.22, DOOR_H, 0.42), M.timber, sx * (DOOR / 2 + 0.11), BASE + DOOR_H / 2, d / 2 - 0.15);
+  if (spec.frame) {
+    const beam = (bw, bd, x, y, z) => part(box(bw, 0.4, bd), M.timber, x, y, z);
+    for (const x of [...spread(w, 6, 0.25), -w / 2 + 0.2, w / 2 - 0.2]) {
+      part(box(0.5, wallH, 0.55), M.timber, x, BASE + wallH / 2, -d / 2 + 0.15);
+      if (Math.abs(x) > DOOR / 2 + 0.4) part(box(0.5, wallH, 0.55), M.timber, x, BASE + wallH / 2, d / 2 - 0.15);
     }
-    part(box(w + 0.1, 0.3, 0.4), M.timber, 0, top - 0.15, d / 2 - 0.15);
-    part(box(w + 0.1, 0.3, 0.4), M.timber, 0, top - 0.15, -d / 2 + 0.15);
-    part(box(DOOR + 0.44, 0.22, 0.42), M.timber, 0, BASE + DOOR_H + 0.11, d / 2 - 0.15);
+    for (const z of spread(d, 6, 0.25)) {
+      for (const sx of [-1, 1]) part(box(0.55, wallH, 0.5), M.timber, sx * (w / 2 - 0.15), BASE + wallH / 2, z);
+    }
+    for (let y = BASE + FLOOR_H; y < top; y += FLOOR_H) {
+      for (const sz of [-1, 1]) beam(w + 0.1, 0.55, 0, y, sz * (d / 2 - 0.15));
+      for (const sx of [-1, 1]) beam(0.55, d, sx * (w / 2 - 0.15), y, 0);
+    }
+    for (const sz of [-1, 1]) beam(w + 0.1, 0.55, 0, top - 0.2, sz * (d / 2 - 0.15));
+    for (const sx of [-1, 1]) part(box(0.3, DOOR_H, 0.6), M.timber, sx * (DOOR / 2 + 0.15), BASE + DOOR_H / 2, d / 2 - 0.15);
+    part(box(DOOR + 0.6, 0.35, 0.6), M.timber, 0, BASE + DOOR_H + 0.17, d / 2 - 0.15);
   }
 
   const windowAt = (x, y, z, rotY) => {
@@ -299,107 +283,131 @@ function buildBuilding(rand, spec) {
     wg.children[3].position.set(0, -0.45, 0.05);
     wg.position.set(x, y, z);
     wg.rotation.y = rotY;
+    wg.scale.setScalar(1.6);
     g.add(wg);
   };
-  const windowRows = wallH >= 5 ? [BASE + 1.7, BASE + 4.4] : [BASE + 1.7];
-  for (const y of windowRows) {
-    windowAt(0, y, -d / 2 - 0.03, Math.PI);
-    for (const sx of [-1, 1]) {
-      windowAt(sx * (w / 2 + 0.03), y, 0, sx * (Math.PI / 2));
-      if (w >= 9) windowAt(sx * (w / 4), y, -d / 2 - 0.03, Math.PI);
-      if (d >= 6.5) windowAt(sx * (w / 2 + 0.03), y, -d / 4, sx * (Math.PI / 2));
+  const signH = Math.min(2.2, (wallH - DOOR_H) * 0.5);
+  const signTop = BASE + DOOR_H + 0.5 + signH;
+  const rows = [];
+  for (let y = BASE + 2.2; y < top - 1.6; y += FLOOR_H) rows.push(y);
+  rows.forEach((y, row) => {
+    for (const x of spread(w, 4.5)) {
+      windowAt(x, y, -d / 2 - 0.03, Math.PI);
+      const blocked = Math.abs(x) < DOOR / 2 + 1.8 && (row === 0 || y - 0.8 < signTop);
+      if (!blocked) windowAt(x, y, d / 2 + 0.03, 0);
+      if (row === 0 && !blocked && spec.awning) {
+        const awning = part(box(2.4, 0.08, 1.4), pick(rand, M.cloth), x, y + 1.15, d / 2 + 0.7);
+        awning.rotation.x = 0.4;
+      }
     }
-  }
-  if (seg > 2.2) {
-    for (const sx of [-1, 1]) windowAt(sx * (DOOR / 2 + seg / 2), BASE + 1.7, d / 2 + 0.03, 0);
-  }
-  if (wallH >= 5) {
-    for (const sx of [-1, 1]) windowAt(sx * (w / 2 - 1.3), BASE + 4.4, d / 2 + 0.03, 0);
-  }
+    for (const z of spread(d, 4.5)) {
+      for (const sx of [-1, 1]) windowAt(sx * (w / 2 + 0.03), y, z, sx * (Math.PI / 2));
+    }
+  });
 
-  const over = 0.45;
+  const over = 0.6;
   const halfSpan = d / 2 + over;
-  const rh = 1.4 + d * 0.15;
+  const rh = d * 0.28;
   const angle = Math.atan2(rh, halfSpan);
   for (const s of [-1, 1]) {
-    const slab = part(box(w + 2 * over, 0.2, Math.hypot(halfSpan, rh)), roofMat, 0, top + rh / 2 + 0.1, (s * halfSpan) / 2);
+    const slab = part(box(w + 2 * over, 0.3, Math.hypot(halfSpan, rh)), roofMat, 0, top + rh / 2 + 0.15, (s * halfSpan) / 2);
     slab.rotation.x = s * angle;
   }
-  part(box(w + 2 * over + 0.2, 0.25, 0.3), M.timber, 0, top + rh + 0.15, 0);
+  part(box(w + 2 * over + 0.2, 0.4, 0.5), M.timber, 0, top + rh + 0.25, 0);
   const gable = new THREE.ExtrudeGeometry(
     new THREE.Shape([new THREE.Vector2(-d / 2, 0), new THREE.Vector2(d / 2, 0), new THREE.Vector2(0, rh * 0.97)]),
     { depth: w, bevelEnabled: false },
   );
   gable.rotateY(Math.PI / 2);
   gable.translate(-w / 2, 0, 0);
-  part(gable, style.wall, 0, top, 0);
-  if (spec.chimney ?? (!spec.name && rand() < 0.4)) {
-    part(box(0.7, rh + 1.4, 0.7), M.stone, w / 2 - 0.9, top + (rh + 1.4) / 2 - 0.2, -d / 4);
-  }
+  part(gable, wallMat, 0, top, 0);
+  if (spec.chimney) part(box(1.8, rh + 3, 1.8), M.stone, w / 2 - 2.5, top + (rh + 3) / 2 - 0.4, -d / 4);
   boxes.push({ x: 0, z: 0, hx: w / 2 + over, hz: d / 2 + over, y0: top, y1: top + rh * 0.55 });
 
   if (spec.name && spec.sign !== false) {
-    const signH = Math.min(0.85, wallH - DOOR_H - 0.25);
-    const signW = Math.min(w - 1.5, signH * 4.6);
-    part(box(signW, signH, 0.1), signMaterial(spec.name, signW, signH), 0, BASE + DOOR_H + (wallH - DOOR_H) / 2, d / 2 + 0.06);
-  }
-  if (spec.awning && seg > 2.2) {
-    const cloth = pick(rand, M.cloth);
-    for (const sx of [-1, 1]) {
-      const awning = part(box(1.7, 0.06, 1), cloth, sx * (DOOR / 2 + seg / 2), BASE + 2.4, d / 2 + 0.5);
-      awning.rotation.x = 0.4;
-    }
+    const signW = Math.min(w * 0.7, signH * 5);
+    part(box(signW, signH, 0.15), signMaterial(spec.name, signW, signH), 0, signTop - signH / 2, d / 2 + 0.08);
   }
   if (spec.balcony) {
-    const y = BASE + 3.2;
-    part(box(w - 0.6, 0.15, 1.3), M.wood, 0, y, d / 2 + 0.65);
-    boxes.push({ x: 0, z: d / 2 + 0.65, hx: w / 2 - 0.3, hz: 0.65, y0: y - 0.1, y1: y + 0.08 });
-    part(box(w - 0.6, 0.08, 0.08), M.woodDark, 0, y + 0.9, d / 2 + 1.25);
-    for (let x = -w / 2 + 0.4; x <= w / 2 - 0.4; x += 0.8) part(box(0.08, 0.9, 0.08), M.woodDark, x, y + 0.45, d / 2 + 1.25);
-    for (const sx of [-1, 1]) part(box(0.2, y, 0.2), M.woodDark, sx * (w / 2 - 0.5), y / 2, d / 2 + 1.2);
-    part(box(1.2, 2.2, 0.06), M.window, 0, y + 1.2, d / 2 + 0.03);
+    const y = BASE + FLOOR_H + 0.3;
+    part(box(w - 1, 0.2, 2), M.wood, 0, y, d / 2 + 1);
+    boxes.push({ x: 0, z: d / 2 + 1, hx: w / 2 - 0.5, hz: 1, y0: y - 0.1, y1: y + 0.1 });
+    part(box(w - 1, 0.1, 0.1), M.woodDark, 0, y + 1, d / 2 + 1.95);
+    for (let x = -w / 2 + 0.6; x <= w / 2 - 0.6; x += 0.8) part(box(0.08, 1, 0.08), M.woodDark, x, y + 0.5, d / 2 + 1.95);
+    for (const x of spread(w, 8, 0.6)) part(box(0.3, y, 0.3), M.woodDark, x, y / 2, d / 2 + 1.85);
   }
 
   const floorY = BASE + 0.06;
+  const entrance = d / 2 - 4; // keep the area inside the door clear
+  const aisle = 2.5;
   const inside = {
     shop() {
-      solid(box(Math.min(w * 0.5, 4), 1, 0.7), M.wood, 0, floorY + 0.5, -d / 2 + 1.6, floorY + 1);
-      solid(box(w - 1, 2.2, 0.4), M.woodDark, 0, floorY + 1.1, -d / 2 + 0.55, floorY + 2.2);
-      for (let x = -w / 2 + 1; x < w / 2 - 0.8; x += 0.7) {
-        part(box(0.4, 0.35, 0.3), pick(rand, M.cloth), x, floorY + 1.3 + (rand() < 0.5 ? 0 : 0.6), -d / 2 + 0.75);
+      solid(box(w - 2, 4.4, 0.7), M.woodDark, 0, floorY + 2.2, -d / 2 + 0.85, floorY + 4.4);
+      for (const sx of [-1, 1]) solid(box(0.7, 4.4, d - 7), M.woodDark, sx * (w / 2 - 0.85), floorY + 2.2, -1.5, floorY + 4.4);
+      for (let x = -w / 2 + 1.6; x < w / 2 - 1.4; x += 0.8) {
+        for (const y of [1.2, 2.4, 3.6]) {
+          if (rand() < 0.75) part(box(0.5, 0.45, 0.35), pick(rand, M.cloth), x, floorY + y, -d / 2 + 1.1);
+        }
+      }
+      solid(box(Math.min(8, w * 0.4), 1.1, 1), M.wood, 0, floorY + 0.55, -d / 2 + 4, floorY + 1.1);
+      for (let x = -w / 2 + 4; x <= w / 2 - 4; x += 5) {
+        if (Math.abs(x) < aisle) continue;
+        for (let z = -d / 2 + 7.5; z < entrance; z += 4) {
+          solid(box(2.6, 1, 1.5), M.wood, x, floorY + 0.5, z, floorY + 1);
+          part(box(0.5, 0.4, 0.5), pick(rand, M.cloth), x - 0.6, floorY + 1.2, z);
+          part(box(0.5, 0.4, 0.5), pick(rand, M.cloth), x + 0.6, floorY + 1.2, z);
+        }
       }
     },
     beds() {
-      for (const sx of [-1, 1]) {
-        for (let z = -d / 2 + 1; z < d / 2 - 1.2; z += 1.4) {
-          solid(box(1.9, 0.45, 1), M.wood, sx * (w / 2 - 1.3), floorY + 0.225, z, floorY + 0.55);
-          part(box(1.5, 0.12, 0.9), M.linen, sx * (w / 2 - 1.4), floorY + 0.5, z);
-          part(box(0.35, 0.15, 0.7), M.linen, sx * (w / 2 - 0.55), floorY + 0.55, z);
+      for (let x = -w / 2 + 1.6; x <= w / 2 - 1.6; x += 2.4) {
+        if (Math.abs(x) < aisle) continue;
+        for (let z = -d / 2 + 1.6; z < entrance; z += 3) {
+          solid(box(1.2, 0.5, 2.2), M.wood, x, floorY + 0.25, z, floorY + 0.6);
+          part(box(1.05, 0.12, 1.7), M.linen, x, floorY + 0.56, z + 0.2);
+          part(box(0.8, 0.18, 0.4), M.linen, x, floorY + 0.6, z - 0.8);
         }
       }
     },
     tavern() {
-      solid(box(w * 0.6, 1.1, 0.7), M.woodDark, 0, floorY + 0.55, -d / 2 + 1.4, floorY + 1.1);
-      for (const [x, z] of [[-w / 4, 0.3], [w / 4, 0.3], [-w / 4, -1.4], [w / 4, -1.4]]) {
-        solid(box(1.4, 0.1, 1.4), M.wood, x, floorY + 0.85, z, floorY + 0.9);
-        part(box(0.2, 0.8, 0.2), M.woodDark, x, floorY + 0.4, z);
-      }
-      for (let i = 0; i < 3; i++) part(new THREE.CylinderGeometry(0.4, 0.4, 0.9, 10), M.wood, -w / 2 + 0.8, floorY + 0.45, -d / 2 + 0.8 + i * 0.9);
-    },
-    forge() {
-      solid(box(1.6, 1, 1.4), M.stone, -w / 2 + 1.3, floorY + 0.5, -d / 2 + 1.2, floorY + 1);
-      part(box(1.2, 0.1, 1), M.flame, -w / 2 + 1.3, floorY + 1.02, -d / 2 + 1.2);
-      solid(new THREE.CylinderGeometry(0.35, 0.4, 0.5, 8), M.woodDark, 1, floorY + 0.25, -0.6, floorY + 0.75);
-      part(box(0.9, 0.3, 0.4), M.iron, 1, floorY + 0.65, -0.6);
-    },
-    books() {
-      for (const sx of [-1, 1]) {
-        solid(box(0.5, 2.6, d - 1.6), M.woodDark, sx * (w / 2 - 0.6), floorY + 1.3, -0.2, floorY + 2.6);
-        for (let y = 0.5; y < 2.5; y += 0.6) {
-          part(box(0.1, 0.4, d - 1.8), pick(rand, M.cloth), sx * (w / 2 - 0.88), floorY + y, -0.2);
+      solid(box(w * 0.5, 1.2, 0.9), M.woodDark, 0, floorY + 0.6, -d / 2 + 2.6, floorY + 1.2);
+      for (let x = -w / 4; x <= w / 4; x += 1.1) part(new THREE.CylinderGeometry(0.45, 0.45, 1, 10), M.wood, x, floorY + 0.5, -d / 2 + 0.9);
+      for (let x = -w / 2 + 3; x <= w / 2 - 3; x += 4.5) {
+        if (Math.abs(x) < aisle) continue;
+        for (let z = -d / 2 + 6; z < entrance; z += 4) {
+          solid(box(1.6, 0.12, 1.6), M.wood, x, floorY + 0.9, z, floorY + 0.96);
+          part(box(0.25, 0.85, 0.25), M.woodDark, x, floorY + 0.42, z);
+          for (const [sx, sz] of [[-1.2, 0], [1.2, 0], [0, -1.2], [0, 1.2]]) {
+            part(new THREE.CylinderGeometry(0.3, 0.3, 0.55, 8), M.wood, x + sx, floorY + 0.28, z + sz);
+          }
         }
       }
-      solid(box(2, 0.1, 1), M.wood, 0, floorY + 0.85, -d / 2 + 1.5, floorY + 0.9);
+    },
+    forge() {
+      for (const x of [-w / 4, w / 4]) {
+        solid(box(3.2, 1.3, 2.4), M.stone, x, floorY + 0.65, -d / 2 + 1.8, floorY + 1.3);
+        part(box(2.6, 0.12, 1.9), M.flame, x, floorY + 1.34, -d / 2 + 1.8);
+        part(box(2.4, 3, 1.8), M.stone, x, floorY + 5.5, -d / 2 + 1.5);
+      }
+      for (let x = -w / 2 + 3.5; x <= w / 2 - 3.5; x += 5) {
+        if (Math.abs(x) < aisle) continue;
+        for (let z = -d / 2 + 6; z < entrance; z += 4.5) {
+          solid(new THREE.CylinderGeometry(0.4, 0.45, 0.55, 8), M.woodDark, x, floorY + 0.27, z, floorY + 0.85);
+          part(box(1, 0.3, 0.45), M.iron, x, floorY + 0.7, z);
+        }
+      }
+    },
+    books() {
+      for (let x = -w / 2 + 2; x <= w / 2 - 2; x += 3) {
+        if (Math.abs(x) < aisle) continue;
+        const len = d * 0.55;
+        const z = -d / 2 + 1 + len / 2;
+        solid(box(0.7, 4, len), M.woodDark, x, floorY + 2, z, floorY + 4);
+        for (let y = 0.6; y < 3.8; y += 0.65) {
+          for (const sx of [-1, 1]) part(box(0.08, 0.45, len - 0.3), pick(rand, M.cloth), x + sx * 0.38, floorY + y, z);
+        }
+      }
+      for (const x of [-w / 4, w / 4]) solid(box(3, 0.12, 1.4), M.wood, x, floorY + 0.9, entrance - 1, floorY + 0.96);
     },
   };
   inside[spec.inside]?.();
@@ -407,130 +415,128 @@ function buildBuilding(rand, spec) {
   return { obj: g, boxes, part, solid, top, BASE };
 }
 
-const BANK_W = 13;
-const BANK_D = 9;
+const BANK = { w: 13 * SCALE, d: 9 * SCALE, h: 7 * SCALE, portico: 7, back: 3.5 };
 
 function buildBank(rand) {
-  const w = BANK_W;
-  const d = BANK_D;
+  const { w, d } = BANK;
   const bank = buildBuilding(rand, {
-    name: 'BANK', sign: false, w, d, h: 7, door: 2.8, doorH: 4, base: 0.75, wall: M.bankStone, roof: M.slate,
+    name: 'BANK', sign: false, w, d, h: BANK.h, door: 5, doorH: 7, base: 1.2, wall: M.bankStone, roof: M.slate,
   });
   const { part, solid, boxes, top, BASE } = bank;
   const front = d / 2;
+  const P = BANK.portico;
 
-  solid(box(w + 0.5, BASE + 1, 2.6), M.bankStone, 0, (BASE - 1) / 2, front + 1.55, BASE);
-  solid(box(w + 0.5, 1.5, 0.6), M.bankStone, 0, -0.25, front + 3.15, 0.5);
-  solid(box(w + 0.5, 1.25, 0.6), M.bankStone, 0, -0.375, front + 3.75, 0.25);
-  for (const x of [-5.7, -3.9, -2.1, 2.1, 3.9, 5.7]) {
-    part(new THREE.CylinderGeometry(0.35, 0.38, 7, 12), M.bankStone, x, BASE + 3.5, front + 2.3);
-    part(box(0.9, 0.3, 0.9), M.bankStone, x, BASE + 0.15, front + 2.3);
-    part(box(0.9, 0.3, 0.9), M.bankStone, x, top - 0.15, front + 2.3);
-    boxes.push({ x, z: front + 2.3, hx: 0.4, hz: 0.4, y0: -2, y1: top });
+  solid(box(w + 0.6, BASE + 1, P), M.bankStone, 0, (BASE - 1) / 2, front + P / 2, BASE);
+  solid(box(w + 0.6, 1.8, 0.8), M.bankStone, 0, -0.1, front + P + 0.4, 0.8);
+  solid(box(w + 0.6, 1.4, 0.8), M.bankStone, 0, -0.3, front + P + 1.2, 0.4);
+  for (const x of [-19, -14.5, -9.5, -4.5, 4.5, 9.5, 14.5, 19]) {
+    part(new THREE.CylinderGeometry(1.05, 1.15, BANK.h, 14), M.bankStone, x, BASE + BANK.h / 2, front + P - 1.4);
+    part(box(2.6, 0.7, 2.6), M.bankStone, x, BASE + 0.35, front + P - 1.4);
+    part(box(2.6, 0.7, 2.6), M.bankStone, x, top - 0.35, front + P - 1.4);
+    boxes.push({ x, z: front + P - 1.4, hx: 1.2, hz: 1.2, y0: -2, y1: top });
   }
-  part(box(w + 0.5, 0.7, 2.9), M.bankStone, 0, top + 0.35, front + 1.3);
-  boxes.push({ x: 0, z: front + 1.3, hx: w / 2 + 0.25, hz: 1.45, y0: top, y1: top + 0.7 });
-  part(box(w + 0.7, 0.2, 0.2), M.gold, 0, top + 0.75, front + 2.75);
+  part(box(w + 0.6, 2.2, P + 0.4), M.bankStone, 0, top + 1.1, front + P / 2);
+  boxes.push({ x: 0, z: front + P / 2, hx: w / 2 + 0.3, hz: P / 2 + 0.2, y0: top, y1: top + 2.2 });
+  part(box(w + 1, 0.5, 0.5), M.gold, 0, top + 2.3, front + P + 0.15);
   const pediment = new THREE.ExtrudeGeometry(
-    new THREE.Shape([new THREE.Vector2(-(w + 0.5) / 2, 0), new THREE.Vector2((w + 0.5) / 2, 0), new THREE.Vector2(0, 1.8)]),
-    { depth: 0.5, bevelEnabled: false },
+    new THREE.Shape([new THREE.Vector2(-(w + 0.6) / 2, 0), new THREE.Vector2((w + 0.6) / 2, 0), new THREE.Vector2(0, 6)]),
+    { depth: 1, bevelEnabled: false },
   );
-  part(pediment, M.bankStone, 0, top + 0.7, front + 2.25);
-  const emblem = part(new THREE.CylinderGeometry(0.55, 0.55, 0.1, 16), M.gold, 0, top + 1.35, front + 2.8);
+  part(pediment, M.bankStone, 0, top + 2.2, front + P - 0.8);
+  const emblem = part(new THREE.CylinderGeometry(1.7, 1.7, 0.3, 20), M.gold, 0, top + 4.3, front + P + 0.3);
   emblem.rotation.x = Math.PI / 2;
-  part(box(4.8, 0.6, 0.1), signMaterial('BANK', 4.8, 0.6, { bg: '#3a3328', edge: '#e8c25a', text: '#e8c25a' }), 0, top + 0.35, front + 2.8);
+  part(box(14, 1.8, 0.2), signMaterial('BANK', 14, 1.8, { bg: '#3a3328', edge: '#e8c25a', text: '#e8c25a' }), 0, top + 1.1, front + P + 0.3);
 
   const floorY = BASE + 0.06;
   bank.lights = [];
-  for (const x of [-w / 4, w / 4]) {
-    part(box(0.06, 1.6, 0.06), M.iron, x, top - 0.8, -0.5);
-    part(new THREE.CylinderGeometry(0.9, 0.9, 0.08, 10), M.iron, x, top - 1.6, -0.5);
-    for (let i = 0; i < 6; i++) {
-      const a = (i / 6) * Math.PI * 2;
-      part(box(0.08, 0.22, 0.08), M.flame, x + Math.cos(a) * 0.8, top - 1.45, -0.5 + Math.sin(a) * 0.8);
+  for (const x of [-13, 0, 13]) {
+    for (const z of [7, -5]) {
+      part(box(0.1, 6, 0.1), M.iron, x, top - 3, z);
+      part(new THREE.CylinderGeometry(2, 2, 0.15, 12), M.iron, x, top - 6, z);
+      for (let i = 0; i < 10; i++) {
+        const a = (i / 10) * Math.PI * 2;
+        part(box(0.15, 0.45, 0.15), M.flame, x + Math.cos(a) * 1.8, top - 5.7, z + Math.sin(a) * 1.8);
+      }
+      if (x !== 0) bank.lights.push(new THREE.Vector3(x, top - 7, z));
     }
-    bank.lights.push(new THREE.Vector3(x, top - 1.9, -0.5));
   }
-  solid(box(w - 3.4, 1.2, 0.6), M.woodDark, 0, floorY + 0.6, 1.4, floorY + 1.2);
-  for (let i = 0; i < 5; i++) part(box(0.08, 1.2, 0.08), M.gold, -w / 2 + 1.8 + (i * (w - 3.6)) / 4, floorY + 1.8, 1.4);
+  solid(box(w - 10, 1.3, 0.9), M.woodDark, 0, floorY + 0.65, 1.5, floorY + 1.3);
+  for (let x = -w / 2 + 5.5; x <= w / 2 - 5.5; x += 3) part(box(0.12, 2.2, 0.12), M.gold, x, floorY + 2.4, 1.5);
 
   // Three vault rooms of different sizes along the back wall, each full of coins.
-  const back = -d / 2 + 0.3;
-  const vaultRoom = (x0, x1, depth, fill) => {
-    const cx = (x0 + x1) / 2;
-    const width = x1 - x0;
-    const wallH = 3.2;
-    const T = 0.25;
-    const doorW = 1.3;
-    const frontZ = back + depth;
-    const ironWall = (x, z, bw, bd) => solid(box(bw, wallH, bd), M.iron, x, floorY + wallH / 2, z, floorY + wallH);
-    ironWall(x0 + T / 2, back + depth / 2, T, depth);
-    ironWall(x1 - T / 2, back + depth / 2, T, depth);
-    const seg = (width - doorW) / 2;
-    ironWall(x0 + seg / 2, frontZ - T / 2, seg, T);
-    ironWall(x1 - seg / 2, frontZ - T / 2, seg, T);
-    part(box(doorW, wallH - 2.5, T), M.iron, cx, floorY + 2.5 + (wallH - 2.5) / 2, frontZ - T / 2);
-    part(box(width + 0.1, 0.2, depth + 0.1), M.iron, cx, floorY + wallH + 0.1, back + depth / 2);
-    boxes.push({ x: cx, z: back + depth / 2, hx: width / 2, hz: depth / 2, y0: floorY + 2.5, y1: floorY + wallH + 0.2 });
-    for (const sx of [-1, 1]) part(box(0.12, 2.5, 0.12), M.gold, cx + sx * (doorW / 2 + 0.06), floorY + 1.25, frontZ + 0.02);
-
-    const door = part(new THREE.CylinderGeometry(0.7, 0.7, 0.22, 18), M.iron, cx + doorW / 2 + 0.12, floorY + 1.2, frontZ + 0.75);
-    door.rotation.z = Math.PI / 2;
-    const wheel = part(new THREE.CylinderGeometry(0.25, 0.25, 0.12, 8), M.gold, cx + doorW / 2 + 0.3, floorY + 1.2, frontZ + 0.75);
-    wheel.rotation.z = Math.PI / 2;
-
-    const spot = (marginX = 0.5, marginZ = 0.4) => ({
-      x: x0 + T + marginX + rand() * (width - 2 * T - 2 * marginX),
-      z: back + marginZ + rand() * (depth - T - 2 * marginZ - 0.6),
-    });
-    fill(spot, floorY);
+  const back = -d / 2 + 0.4;
+  const stack = (material, x, z, coins) => part(new THREE.CylinderGeometry(0.17, 0.17, coins * 0.06, 10), material, x, floorY + coins * 0.03, z);
+  const heap = (material, x, z, radius, height) => part(new THREE.ConeGeometry(radius, height, 9), material, x, floorY + height / 2, z);
+  const chest = (x, z) => {
+    part(box(1, 0.6, 0.65), M.woodDark, x, floorY + 0.3, z);
+    part(box(1.04, 0.08, 0.69), M.gold, x, floorY + 0.45, z);
+    part(new THREE.ConeGeometry(0.42, 0.3, 8), M.gold, x, floorY + 0.75, z);
   };
-
-  const stack = (material, x, z, y, coins) => part(new THREE.CylinderGeometry(0.17, 0.17, coins * 0.06, 10), material, x, y + coins * 0.03, z);
-  const heap = (material, x, z, y, radius, height) => part(new THREE.ConeGeometry(radius, height, 8), material, x, y + height / 2, z);
-  const stacks = (spot, y, count, goldShare) => {
-    for (let i = 0; i < count; i++) {
-      const p = spot();
-      stack(rand() < goldShare ? M.gold : M.silver, p.x, p.z, y, 4 + Math.floor(rand() * 10));
-    }
-  };
-  const chest = (x, z, y) => {
-    part(box(1, 0.6, 0.65), M.woodDark, x, y + 0.3, z);
-    part(box(1.04, 0.08, 0.69), M.gold, x, y + 0.45, z);
-    heap(M.gold, x, z, y + 0.6, 0.42, 0.3);
-  };
-  const bars = (x, z, y) => {
-    for (let layer = 0; layer < 3; layer++) {
-      for (let i = 0; i < 3 - layer; i++) {
-        part(box(0.45, 0.15, 0.22), M.gold, x + (i - (2 - layer) / 2) * 0.48, y + 0.075 + layer * 0.15, z);
+  const bars = (x, z) => {
+    for (let layer = 0; layer < 4; layer++) {
+      for (let i = 0; i < 4 - layer; i++) {
+        part(box(0.45, 0.15, 0.22), M.gold, x + (i - (3 - layer) / 2) * 0.48, floorY + 0.075 + layer * 0.15, z);
       }
     }
   };
-  const sack = (x, z, y) => {
-    const s = part(new THREE.IcosahedronGeometry(0.32, 0), M.sack, x, y + 0.28, z);
+  const sack = (x, z) => {
+    const s = part(new THREE.IcosahedronGeometry(0.32, 0), M.sack, x, floorY + 0.28, z);
     s.scale.set(1, 0.9, 1);
-    part(box(0.12, 0.12, 0.12), M.sack, x, y + 0.6, z);
+    part(box(0.12, 0.12, 0.12), M.sack, x, floorY + 0.6, z);
+  };
+  const vaultRoom = (x0, x1, depth, fill) => {
+    const cx = (x0 + x1) / 2;
+    const width = x1 - x0;
+    const wallH = 7;
+    const VT = 0.5;
+    const doorW = 2.4;
+    const doorH = 3.6;
+    const frontZ = back + depth;
+    const ironWall = (x, z, bw, bd) => solid(box(bw, wallH, bd), M.iron, x, floorY + wallH / 2, z, floorY + wallH);
+    ironWall(x0 + VT / 2, back + depth / 2, VT, depth);
+    ironWall(x1 - VT / 2, back + depth / 2, VT, depth);
+    const seg = (width - doorW) / 2;
+    ironWall(x0 + seg / 2, frontZ - VT / 2, seg, VT);
+    ironWall(x1 - seg / 2, frontZ - VT / 2, seg, VT);
+    part(box(doorW, wallH - doorH, VT), M.iron, cx, floorY + doorH + (wallH - doorH) / 2, frontZ - VT / 2);
+    part(box(width + 0.2, 0.4, depth + 0.2), M.iron, cx, floorY + wallH + 0.2, back + depth / 2);
+    boxes.push({ x: cx, z: back + depth / 2, hx: width / 2, hz: depth / 2, y0: floorY + doorH, y1: floorY + wallH + 0.4 });
+    for (const sx of [-1, 1]) part(box(0.2, doorH, 0.2), M.gold, cx + sx * (doorW / 2 + 0.1), floorY + doorH / 2, frontZ + 0.02);
+    const door = part(new THREE.CylinderGeometry(1.6, 1.6, 0.35, 20), M.iron, cx + doorW / 2 + 0.2, floorY + 1.8, frontZ + 1.7);
+    door.rotation.z = Math.PI / 2;
+    const wheel = part(new THREE.CylinderGeometry(0.55, 0.55, 0.15, 8), M.gold, cx + doorW / 2 + 0.45, floorY + 1.8, frontZ + 1.7);
+    wheel.rotation.z = Math.PI / 2;
+    const stacks = (count, goldShare) => {
+      for (let i = 0; i < count; i++) {
+        const x = x0 + 1 + rand() * (width - 2);
+        const z = back + 0.7 + rand() * (depth - 2.6);
+        if (Math.abs(x - cx) < doorW / 2 + 0.3 && z > frontZ - 3) continue;
+        stack(rand() < goldShare ? M.gold : M.silver, x, z, 4 + Math.floor(rand() * 12));
+      }
+    };
+    fill(cx, stacks);
   };
 
-  vaultRoom(-w / 2 + 0.35, -3.6, 2.2, (spot, y) => {
-    stacks(spot, y, 8, 0.2);
-    const p = spot();
-    sack(p.x, p.z, y);
+  vaultRoom(-w / 2 + 0.5, -12.1, 7, (cx, stacks) => {
+    heap(M.silver, cx - 1, back + 2.2, 1.6, 1.1);
+    stacks(60, 0.15);
+    for (const dx of [-2.5, 0, 2.5]) sack(cx + dx, back + 4.6);
   });
-  vaultRoom(-3.4, 0.5, 2.9, (spot, y) => {
-    heap(M.silver, -2.4, back + 0.9, y, 0.8, 0.55);
-    stacks(spot, y, 10, 0.5);
-    chest(-0.5, back + 0.6, y);
-    const p = spot();
-    sack(p.x, p.z, y);
+  vaultRoom(-11.6, 1.4, 9, (cx, stacks) => {
+    heap(M.silver, cx - 3, back + 2.6, 2.4, 1.6);
+    heap(M.gold, cx + 3, back + 2.2, 1.7, 1.2);
+    stacks(90, 0.45);
+    for (const dx of [-4.5, 0, 4.5]) chest(cx + dx, back + 6);
+    for (const dx of [-5.5, -2, 2, 5.5]) sack(cx + dx, back + 0.9);
   });
-  vaultRoom(0.7, w / 2 - 0.35, 3.6, (spot, y) => {
-    heap(M.gold, 3.6, back + 1.2, y, 1.2, 0.95);
-    heap(M.silver, 1.6, back + 0.8, y, 0.7, 0.45);
-    bars(5.2, back + 0.5, y);
-    chest(1.8, back + 2.2, y);
-    chest(5.3, back + 1.6, y);
-    stacks(spot, y, 14, 0.7);
+  vaultRoom(1.9, w / 2 - 0.5, 11.3, (cx, stacks) => {
+    heap(M.gold, cx, back + 3.6, 3.6, 2.8);
+    heap(M.silver, cx - 6, back + 2.4, 2.2, 1.5);
+    heap(M.gold, cx + 6, back + 2.2, 2, 1.4);
+    for (const dx of [-6.5, -2.5, 2.5, 6.5]) bars(cx + dx, back + 8.2);
+    for (const dx of [-7, -4, 4, 7]) chest(cx + dx, back + 6.2);
+    for (const dx of [-7.5, 7.5]) chest(cx + dx, back + 9.3);
+    stacks(140, 0.7);
   });
   return bank;
 }
@@ -615,28 +621,53 @@ function makeStall(rand) {
 
 let groundAt;
 
-function placeLocal(obj, u, v, fu, fv) {
-  const dir = localToDir(u, v);
-  return placeAt(obj, dir, towards(dir, localToDir(u + fu, v + fv)), RADIUS + groundAt(dir));
+function place(obj, dir, facingDir) {
+  return placeAt(obj, dir, towards(dir, facingDir), RADIUS + groundAt(dir));
 }
 
-function addBoxesFrom(obj, boxes) {
-  const ax = new THREE.Vector3(1, 0, 0).applyQuaternion(obj.quaternion);
-  const az = new THREE.Vector3(0, 0, 1).applyQuaternion(obj.quaternion);
+// Turns a building's collision boxes into planet-shaped ones (small pieces, so they follow the curve).
+function addBoxesFrom(obj, boxes, curved = false) {
   const base = obj.position.length();
+  const at = (x, z) => {
+    const p = obj.localToWorld(new THREE.Vector3(x, 0, z));
+    return curved ? warpPoint(p, obj.position) : p;
+  };
   for (const b of boxes) {
-    addBox(obj.localToWorld(new THREE.Vector3(b.x, 0, b.z)), ax, az, b.hx, b.hz, base + b.y0, base + b.y1);
+    const nx = Math.max(1, Math.ceil(b.hx / 3));
+    const nz = Math.max(1, Math.ceil(b.hz / 3));
+    const hx = b.hx / nx;
+    const hz = b.hz / nz;
+    for (let i = 0; i < nx; i++) {
+      for (let j = 0; j < nz; j++) {
+        const x = b.x - b.hx + hx * (2 * i + 1);
+        const z = b.z - b.hz + hz * (2 * j + 1);
+        const pos = at(x, z);
+        const up = pos.clone().normalize();
+        const ax = at(x + 0.5, z).sub(at(x - 0.5, z));
+        const az = at(x, z + 0.5).sub(at(x, z - 0.5));
+        ax.addScaledVector(up, -ax.dot(up)).normalize();
+        az.addScaledVector(up, -az.dot(up)).normalize();
+        addBox(pos, ax, az, hx, hz, base + b.y0, base + b.y1);
+      }
+    }
   }
 }
 
 function buildGround() {
-  const step = 0.6;
+  const step = 0.8;
   const n = Math.ceil((TOWN_EDGE + 1) / step);
   const size = 2 * n + 1;
+  const [U, V] = tangentBasis(TOWN_DIR);
+  const dirAt = (u, v) => {
+    const dist = Math.hypot(u, v);
+    if (dist < 1e-6) return TOWN_DIR.clone();
+    const s = Math.sin(dist / RADIUS) / dist;
+    return TOWN_DIR.clone().multiplyScalar(Math.cos(dist / RADIUS)).addScaledVector(U, u * s).addScaledVector(V, v * s);
+  };
   const points = [];
   for (let i = 0; i < size; i++) {
     for (let j = 0; j < size; j++) {
-      const dir = localToDir((i - n) * step, (j - n) * step);
+      const dir = dirAt((i - n) * step, (j - n) * step);
       points.push(dir.multiplyScalar(RADIUS + groundAt(dir)));
     }
   }
@@ -655,46 +686,46 @@ function buildGround() {
     dirtDark: new THREE.Color('#86673f'),
     cobble: new THREE.Color('#a89272'),
     cobbleDark: new THREE.Color('#917c60'),
+    yard: new THREE.Color('#8f8a5a'),
     townGrass: new THREE.Color('#93a55a'),
   };
 
-  function colorFor(a, b, c, u, v) {
+  function colorFor(a, b, c) {
     e1.subVectors(b, a);
     e2.subVectors(c, a);
     mid.copy(a).add(b).add(c);
     const steep = e1.cross(e2).normalize().dot(mid.normalize()) < 0.8;
-    const r = Math.hypot(u, v);
     if (steep) return color.copy(C.stone).offsetHSL(0, 0, (rand() - 0.5) * 0.08);
-    const gap = roadGap(u, v);
+    const gap = roadGap(mid);
     if (gap < 0) return color.copy(rand() < 0.3 ? C.dirtDark : C.dirt).offsetHSL(0, 0, (rand() - 0.5) * 0.04);
-    if (r < 30 && levelAmount(LEVELS[1], u, v) > 0.98) {
-      const odd = (Math.floor(u / 0.9) + Math.floor(v / 0.9)) & 1;
+    if (plateauInside(mid) > 0.9) {
+      const { x, y } = rowCoords(mid, AXES[0]);
+      const odd = (Math.floor(x / 1.2) + Math.floor(y / 1.2)) & 1;
       return color.copy(odd ? C.cobble : C.cobbleDark).offsetHSL(0, 0, (rand() - 0.5) * 0.03);
     }
-    color.copy(C.townGrass);
-    const wild = THREE.MathUtils.smoothstep(r, TOWN_CORE - 4, TOWN_EDGE);
+    const fromMiddle = mid.angleTo(TOWN_DIR) * RADIUS;
+    color.copy(fromMiddle < 70 ? C.yard : C.townGrass);
+    const wild = THREE.MathUtils.smoothstep(fromMiddle, TOWN_CORE - 4, TOWN_EDGE);
     if (wild > 0) color.lerp(grassColor(groundAt(mid), grass), wild);
-    if (gap < 0.7) color.lerp(C.dirt, 0.45);
+    if (gap < 0.8) color.lerp(C.dirt, 0.45);
     return color.offsetHSL(0, 0, (rand() - 0.5) * 0.05);
   }
 
-  function tri(a, b, c, u, v) {
+  function tri(a, b, c) {
     positions.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
-    colorFor(a, b, c, u, v);
+    colorFor(a, b, c);
     for (let k = 0; k < 3; k++) colors.push(color.r, color.g, color.b);
   }
 
   for (let i = 0; i < size - 1; i++) {
     for (let j = 0; j < size - 1; j++) {
-      const u0 = (i - n) * step;
-      const v0 = (j - n) * step;
-      if (Math.hypot(u0 + step / 2, v0 + step / 2) > TOWN_EDGE + 0.5) continue;
+      if (Math.hypot((i - n + 0.5) * step, (j - n + 0.5) * step) > TOWN_EDGE + 0.5) continue;
       const a = points[i * size + j];
       const b = points[(i + 1) * size + j];
       const c = points[(i + 1) * size + j + 1];
       const d = points[i * size + j + 1];
-      tri(a, b, c, u0 + step * 0.67, v0 + step * 0.33);
-      tri(a, c, d, u0 + step * 0.33, v0 + step * 0.67);
+      tri(a, b, c);
+      tri(a, c, d);
     }
   }
 
@@ -709,209 +740,219 @@ function buildGround() {
 
 function buildStairs(batch) {
   const depth = (2 * STAIR_LEN) / STEPS;
-  for (const lv of LEVELS) {
-    for (const s of lv.stairs) {
-      for (let i = 0; i < STEPS; i++) {
-        const p = pointAlong(s, STAIR_LEN - (i + 0.5) * depth);
-        const top = lv.low + (LEVEL_H * (i + 1)) / STEPS;
-        const height = top - lv.low + 0.8;
-        const step = new THREE.Group().add(mesh(box(STAIR_HALF * 2 + 0.3, height, depth + 0.02), M.stone, 0, top - height / 2, 0));
-        const dir = localToDir(p.u, p.v);
-        placeAt(step, dir, towards(dir, localToDir(p.u - s.axis.u, p.v - s.axis.v)), RADIUS);
-        batch.add(step);
-        addBoxesFrom(step, [{ x: 0, z: 0, hx: STAIR_HALF + 0.15, hz: depth / 2, y0: -10, y1: top }]);
-      }
+  for (const axis of AXES) {
+    for (let i = 0; i < STEPS; i++) {
+      const top = (LEVEL_H * (i + 1)) / STEPS;
+      const height = top + 0.8;
+      const step = new THREE.Group().add(mesh(box(STAIR_HALF * 2 + 0.3, height, depth + 0.02), M.stone, 0, top - height / 2, 0));
+      const dir = townPoint(axis, PLATEAU + STAIR_LEN - (i + 0.5) * depth);
+      placeAt(step, dir, towards(dir, TOWN_DIR), RADIUS);
+      batch.add(step);
+      addBoxesFrom(step, [{ x: 0, z: 0, hx: STAIR_HALF + 0.15, hz: depth / 2, y0: -10, y1: top }]);
     }
   }
 }
 
 function buildFences(batch) {
-  LEVELS.forEach((lv, li) => {
-    const n = Math.round((2 * Math.PI * (li === 0 ? 27 : 11)) / 2.2);
+  for (const axis of AXES) {
     const posts = [];
-    for (let i = 0; i < n; i++) {
-      const t = (i / n) * Math.PI * 2;
-      const r = lv.radius(t) - 1;
-      const u = lv.center.u + r * Math.cos(t);
-      const v = lv.center.v + r * Math.sin(t);
-      posts.push(nearStairs(u, v, 1) ? null : { u, v });
+    const end = cornerY(PLATEAU - 1);
+    for (let y = -end; y <= end; y += (2 * end) / Math.round(end / 1.1)) {
+      posts.push(Math.abs(y) < STAIR_HALF + 1 ? null : townPoint(axis, PLATEAU - 1, y));
     }
     posts.forEach((p, i) => {
       if (!p) return;
-      batch.add(placeLocal(new THREE.Group().add(mesh(box(0.16, 1.1, 0.16), M.woodDark, 0, 0.55, 0)), p.u, p.v, 1, 0));
-      const q = posts[(i + 1) % posts.length];
+      batch.add(place(new THREE.Group().add(mesh(box(0.16, 1.1, 0.16), M.woodDark, 0, 0.55, 0)), p, TOWN_DIR));
+      const q = posts[i + 1];
       if (!q) return;
-      const len = Math.hypot(q.u - p.u, q.v - p.v);
+      const len = p.angleTo(q) * RADIUS;
       const rail = new THREE.Group().add(
         mesh(box(0.08, 0.1, len + 0.1), M.wood, 0, 0.85, 0),
         mesh(box(0.08, 0.1, len + 0.1), M.wood, 0, 0.45, 0),
       );
-      batch.add(placeLocal(rail, (p.u + q.u) / 2, (p.v + q.v) / 2, (q.u - p.u) / len, (q.v - p.v) / len));
+      batch.add(place(rail, p.clone().add(q).normalize(), q));
     });
-  });
+  }
 }
 
-function buildLanterns(batch) {
-  const rows = [
-    { radius: () => RING0 - 2.3, spacing: 14, outward: 1 },
-    { radius: (t) => LEVELS[0].radius(t) - RING1_IN + 1.9, spacing: 12, outward: -1 },
-  ];
-  for (const row of rows) {
-    const n = Math.round((2 * Math.PI * row.radius(0)) / row.spacing);
-    for (let i = 0; i < n; i++) {
-      const t = ((i + 0.5) / n) * Math.PI * 2;
-      const r = row.radius(t);
-      const u = r * Math.cos(t);
-      const v = r * Math.sin(t);
-      if (nearStairs(u, v, 1.5) || roadGap(u, v) < 0.2 || nearDoor(u, v)) continue;
-      const lantern = placeLocal(makeLantern(), u, v, row.outward * Math.cos(t), row.outward * Math.sin(t));
-      batch.add(lantern);
-      addCollider(lantern.position.clone(), 0.25, 2.8);
+const lights = [];
+export const placedBuildings = [];
+// For each building: a spot outside its front door and a spot just inside (used by tests, and by NPCs later).
+export const buildingDoors = [];
+
+function recordDoor(obj, name, outsideZ, insideZ) {
+  const at = (z) => warpPoint(obj.localToWorld(new THREE.Vector3(0, 0, z)), obj.position).normalize();
+  buildingDoors.push({ name, outside: at(outsideZ), inside: at(insideZ) });
+}
+
+function buildPlaza(batch, rand) {
+  const bank = buildBank(rand);
+  place(bank.obj, townPoint(AXES[0], -BANK.back), SHIP_DIR);
+  batch.add(bank.obj, true);
+  addBoxesFrom(bank.obj, bank.boxes, true);
+  for (const spot of bank.lights) {
+    const light = new THREE.PointLight('#ffc477', 90, 34, 1.2);
+    light.position.copy(warpPoint(bank.obj.localToWorld(spot.clone()), bank.obj.position));
+    lights.push(light);
+  }
+  placedBuildings.push('BANK');
+  const bankDepth = BANK.d + BANK.portico + 1.6;
+  const bankMiddle = townPoint(AXES[0], -BANK.back + (BANK.portico + 1.6) / 2);
+  footprints.push(footprintAt(bankMiddle, townPoint(AXES[0], 40), BANK.w + 0.6, bankDepth));
+  recordDoor(bank.obj, 'BANK', BANK.d / 2 + BANK.portico + 3, BANK.d / 2 - 4);
+
+  const well = place(makeWell(), townPoint(AXES[2], 25), TOWN_DIR);
+  batch.add(well);
+  addCollider(well.position.clone(), 1.3, 0.9);
+  for (const side of [1, 3]) {
+    for (const y of [-12, 12]) {
+      const stall = place(makeStall(rand), townPoint(AXES[side], 25.5, y), TOWN_DIR);
+      batch.add(stall);
+      addBoxesFrom(stall, [{ x: 0, z: 0.4, hx: 1.2, hz: 0.4, y0: -2, y1: 0.9 }]);
     }
   }
 }
 
-const houseSpots = [];
+// Footprints of everything built so far, so new buildings never overlap them.
+const footprints = [];
 
-function overlaps(a, b) {
-  for (const [x, y] of [[a.fu, a.fv], [-a.fv, a.fu], [b.fu, b.fv], [-b.fv, b.fu]]) {
-    const extent = (h) => Math.abs(h.fu * x + h.fv * y) * h.hd + Math.abs(-h.fv * x + h.fu * y) * h.hw;
-    if (Math.abs((b.u - a.u) * x + (b.v - a.v) * y) > extent(a) + extent(b)) return false;
+function footprintAt(center, frontPoint, w, d) {
+  const probe = placeAt(new THREE.Group(), center, towards(center, frontPoint), RADIUS);
+  return {
+    up: center.clone(),
+    ax: new THREE.Vector3(1, 0, 0).applyQuaternion(probe.quaternion),
+    az: new THREE.Vector3(0, 0, 1).applyQuaternion(probe.quaternion),
+    hw: w / 2,
+    hd: d / 2,
+  };
+}
+
+function footprintPoint(f, x, z) {
+  const dist = Math.hypot(x, z);
+  if (dist < 1e-9) return f.up.clone();
+  const a = dist / RADIUS;
+  return f.up.clone().multiplyScalar(Math.cos(a)).addScaledVector(f.ax, (x / dist) * Math.sin(a)).addScaledVector(f.az, (z / dist) * Math.sin(a));
+}
+
+function insideFootprint(f, dir) {
+  const c = dir.dot(f.up);
+  const t = dir.clone().addScaledVector(f.up, -c);
+  const s = t.length();
+  if (s < 1e-9) return true;
+  t.multiplyScalar((Math.atan2(s, c) * RADIUS) / s);
+  return Math.abs(t.dot(f.ax)) < f.hw && Math.abs(t.dot(f.az)) < f.hd;
+}
+
+function edgePoints(f, inset = 0.25) {
+  const points = [];
+  const w = f.hw - inset;
+  const d = f.hd - inset;
+  for (let x = -w; x <= w + 1e-6; x += (2 * w) / Math.ceil(2 * w)) points.push(footprintPoint(f, x, -d), footprintPoint(f, x, d));
+  for (let z = -d; z <= d + 1e-6; z += (2 * d) / Math.ceil(2 * d)) points.push(footprintPoint(f, -w, z), footprintPoint(f, w, z));
+  return points;
+}
+
+function footprintFits(f) {
+  const points = edgePoints(f);
+  for (let i = 1; i < 6; i++) {
+    for (let j = 1; j < 6; j++) points.push(footprintPoint(f, -f.hw + (i * f.hw) / 3, -f.hd + (j * f.hd) / 3));
+  }
+  if (points.some((dir) => roadGap(dir) < 0)) return false;
+  const reach = Math.hypot(f.hw, f.hd);
+  for (const other of footprints) {
+    if (f.up.angleTo(other.up) * RADIUS > reach + Math.hypot(other.hw, other.hd)) continue;
+    if (points.some((dir) => insideFootprint(other, dir))) return false;
+    if (edgePoints(other).some((dir) => insideFootprint(f, dir))) return false;
   }
   return true;
 }
 
-const footprint = (u, v, fu, fv, w, d) => ({ u, v, fu, fv, hw: w / 2 + 0.5, hd: d / 2 + 0.5 });
-
-function spotIsFree(u, v, fu, fv, w, d, level) {
-  if (Math.hypot(u, v) + Math.hypot(w, d) / 2 > TOWN_CORE - 1) return false;
-  const me = footprint(u, v, fu, fv, w, d);
-  if (houseSpots.some((h) => overlaps(h, me))) return false;
-  for (let sx = -0.5; sx <= 0.5; sx += 0.25) {
-    for (let sz = -0.5; sz <= 0.5; sz += 0.25) {
-      const pu = u - fv * sx * (w + 0.8) + fu * sz * (d + 0.8);
-      const pv = v + fu * sx * (w + 0.8) + fv * sz * (d + 0.8);
-      if (Math.abs(townHeight(pu, pv) - level) > 0.02) return false;
-      if (roadGap(pu, pv) < 0.2 || nearStairs(pu, pv, 1)) return false;
-    }
-  }
-  return true;
+// Finds where a building of this size would stand in a row, or null if it doesn't fit there.
+function rowSpot(axis, y, w, d) {
+  const frontPoint = townPoint(axis, FRONT, y);
+  const delta = d / 2 / RADIUS;
+  const center = frontPoint.clone().multiplyScalar(Math.cos(delta)).addScaledVector(rowNormal(axis, FRONT), Math.sin(delta)).normalize();
+  const f = footprintAt(center, frontPoint, w, d);
+  return footprintFits(f) ? { center, frontPoint, f } : null;
 }
 
-const nearDoor = (u, v) => houseSpots.some((h) => Math.hypot(u - h.u - h.fu * h.hd, v - h.v - h.fv * h.hd) < 2.2);
+function placeBuilding(batch, rand, spot, spec) {
+  const building = buildBuilding(rand, spec);
+  place(building.obj, spot.center, spot.frontPoint);
+  batch.add(building.obj, true);
+  addBoxesFrom(building.obj, building.boxes, true);
+  footprints.push(spot.f);
+  placedBuildings.push(spec.name);
+  recordDoor(building.obj, spec.name, spec.d / 2 + 2, spec.d / 2 - 3);
+}
 
-function placeProp(batch, rand, u, v, level) {
-  if (Math.abs(townHeight(u, v) - level) > 0.02 || roadGap(u, v) < 0.3 || nearStairs(u, v, 1) || nearDoor(u, v)) return;
+function placeProp(batch, rand, dir) {
   const roll = rand();
   const { obj, r, top } = roll < 0.35 ? makeBarrel() : roll < 0.65 ? makeCrate(rand) : roll < 0.85 ? makeHay() : makeCart();
+  const [a, b] = tangentBasis(dir);
   const spin = rand() * Math.PI * 2;
-  placeLocal(obj, u, v, Math.cos(spin), Math.sin(spin));
+  placeAt(obj, dir, a.multiplyScalar(Math.cos(spin)).addScaledVector(b, Math.sin(spin)), RADIUS + groundAt(dir));
   batch.add(obj);
   addCollider(obj.position.clone(), r, top);
 }
 
-function tryHouse(batch, rand, u, v, fu, fv, spec, level) {
-  const { w, d } = spec;
-  if (!spotIsFree(u, v, fu, fv, w, d, level)) return false;
-  const house = buildBuilding(rand, spec);
-  if (spec.name) placedBuildings.push(spec.name);
-  placeLocal(house.obj, u, v, fu, fv);
-  batch.add(house.obj);
-  addBoxesFrom(house.obj, house.boxes);
-  houseSpots.push(footprint(u, v, fu, fv, w, d));
-
-  if (rand() < 0.65) {
-    const side = rand() < 0.5 ? -1 : 1;
-    const x = side * (w / 2 + 0.9);
-    const z = d / 2 - 0.7;
-    placeProp(batch, rand, u - fv * x + fu * z, v + fu * x + fv * z, level);
-  }
-  return true;
-}
-
-export const placedBuildings = [];
-const inShopDistrict = (t) => Math.abs(Math.atan2(Math.sin(t - SHIP_ANGLE), Math.cos(t - SHIP_ANGLE))) < 1.3;
-
-function buildHouses(batch, rand) {
+// Fills the four sides of the square with buildings standing wall to wall.
+function buildRows(batch, rand) {
   const queue = [...SHOP_TYPES];
-  let extra = 0;
-  const choose = (district) => (district ? queue[0] ?? MORE_SHOPS[extra % MORE_SHOPS.length] : pick(rand, HOUSE_SIZES));
-  const settle = (spec, placed) => {
-    if (!spec.name) return;
-    if (queue[0] !== spec) extra++;
-    else if (placed) queue.shift();
-    else queue.push(queue.shift());
-  };
+  const usedExtras = new Set();
+  const narrowest = Math.min(...EXTRA_SHOPS.map((s) => s.w));
 
-  const rows = [
-    { radius: (d) => () => RING0 + 1.8 + SETBACK + d / 2, facing: -1, level: 0 },
-    { radius: (d) => () => RING0 - 1.8 - SETBACK - d / 2, facing: 1, level: 0 },
-    { radius: (d) => () => RING_OUT - 1.6 - SETBACK - d / 2, facing: 1, level: 0 },
-    { radius: (d) => (t) => LEVELS[0].radius(t) - RING1_IN - 1.4 - SETBACK - d / 2, facing: 1, level: LEVEL_H },
-  ];
-  for (const row of rows) {
-    let t = rand();
-    while (t < Math.PI * 2 + 0.5) {
-      const spec = choose(row.level === 0 && inShopDistrict(t));
-      const r = row.radius(spec.d)(t);
-      const placed = tryHouse(batch, rand, r * Math.cos(t), r * Math.sin(t), row.facing * Math.cos(t), row.facing * Math.sin(t), spec, row.level);
-      settle(spec, placed);
-      t += (placed ? spec.w + 2.5 : 1.5) / r;
-    }
-  }
-
-  const c = LEVELS[1].center;
-  for (let t = rand(); t < Math.PI * 2 + 0.5;) {
-    const spec = pick(rand, HOUSE_SIZES);
-    const r = LEVELS[1].radius(t) + LANE_OUT + 1.2 + SETBACK + spec.d / 2;
-    const placed = tryHouse(batch, rand, c.u + r * Math.cos(t), c.v + r * Math.sin(t), -Math.cos(t), -Math.sin(t), spec, LEVEL_H);
-    t += (placed ? spec.w + 2.5 : 1.5) / r;
-  }
-
-  LEVELS[0].stairs.forEach((s) => {
-    const district = inShopDistrict(Math.atan2(s.axis.v, s.axis.u));
-    for (let along = RING0 + 6; along < RING_OUT; along += 6) {
-      for (const side of [-1, 1]) {
-        const spec = choose(district);
-        const off = 1.6 + SETBACK + spec.d / 2;
-        const u = s.axis.u * along - side * s.axis.v * off;
-        const v = s.axis.v * along + side * s.axis.u * off;
-        settle(spec, tryHouse(batch, rand, u, v, side * s.axis.v, -side * s.axis.u, spec, 0));
+  AXES.forEach((axis, i) => {
+    const reach = i % 2 === 0 ? cornerY(FRONT, OUTER_ST - OUTER_HALF) - 0.5 : cornerY(FRONT) - 0.3;
+    for (const sign of [1, -1]) {
+      let y = CROSS_HALF + 0.4;
+      while (reach - y >= narrowest) {
+        const room = reach - y;
+        const candidates = [
+          ...queue,
+          ...EXTRA_SHOPS.filter((s) => !usedExtras.has(s)),
+          ...EXTRA_SHOPS.filter((s) => usedExtras.has(s)),
+        ].filter((s) => s.w <= room);
+        let placed = null;
+        for (const spec of candidates) {
+          for (const shrink of [1, 0.85, 0.7]) {
+            const d = Math.max(11, spec.d * shrink);
+            const spot = rowSpot(axis, sign * (y + spec.w / 2), spec.w, d);
+            if (spot) {
+              placed = { spec: { ...spec, d }, spot };
+              break;
+            }
+          }
+          if (placed) break;
+        }
+        if (!placed) {
+          y += 2;
+          continue;
+        }
+        const { spec, spot } = placed;
+        const original = queue.find((s) => s.name === spec.name);
+        if (original) queue.splice(queue.indexOf(original), 1);
+        else usedExtras.add(EXTRA_SHOPS.find((s) => s.name === spec.name));
+        placeBuilding(batch, rand, spot, spec);
+        if (rand() < 0.7) placeProp(batch, rand, townPoint(axis, FRONT - 0.9, sign * (y + 0.9)));
+        y += spec.w;
       }
     }
   });
 }
 
-const lights = [];
-
-function buildPlaza(batch, rand) {
-  const c = LEVELS[1].center;
-  const facing = SHIP_ANGLE + 0.4;
-  const fu = Math.cos(facing);
-  const fv = Math.sin(facing);
-  const at = (angle, dist) => ({ u: c.u + Math.cos(angle) * dist, v: c.v + Math.sin(angle) * dist, fu: -Math.cos(angle), fv: -Math.sin(angle) });
-
-  const bank = buildBank(rand);
-  placeLocal(bank.obj, c.u - fu, c.v - fv, fu, fv);
-  batch.add(bank.obj);
-  addBoxesFrom(bank.obj, bank.boxes);
-  for (const spot of bank.lights) {
-    const light = new THREE.PointLight('#ffc477', 30, 16, 1.4);
-    light.position.copy(bank.obj.localToWorld(spot.clone()));
-    lights.push(light);
-  }
-  houseSpots.push(footprint(c.u + fu * 0.75, c.v + fv * 0.75, fu, fv, BANK_W + 0.5, BANK_D + 4));
-  placedBuildings.push('BANK');
-
-  const behind = at(facing + Math.PI, 8.6);
-  const well = placeLocal(makeWell(), behind.u, behind.v, behind.fu, behind.fv);
-  batch.add(well);
-  addCollider(well.position.clone(), 1.3, 0.9);
-  for (const a of [-1.68, 1.68]) {
-    const spot = at(facing + a, 9.35);
-    const stall = placeLocal(makeStall(rand), spot.u, spot.v, spot.fu, spot.fv);
-    batch.add(stall);
-    addBoxesFrom(stall, [{ x: 0, z: 0.4, hx: 1.2, hz: 0.4, y0: -2, y1: 0.9 }]);
+function buildLanterns(batch) {
+  for (const axis of AXES) {
+    for (let y = -55; y <= 55; y += 11) {
+      if (Math.abs(y) < CROSS_HALF + 1) continue;
+      for (const [x, facing] of [[PLATEAU + 1.2, 1], [OUTER_ST + OUTER_HALF + 0.6, -1]]) {
+        if (Math.abs(y) > cornerY(x) - 1) continue;
+        const dir = townPoint(axis, x, y);
+        const lantern = place(makeLantern(), dir, townPoint(axis, x + facing, y));
+        batch.add(lantern);
+        addCollider(lantern.position.clone(), 0.25, 2.8);
+      }
+    }
   }
 }
 
@@ -926,9 +967,9 @@ export function createTown(scene, heightAt) {
   buildStairs(batch);
   buildFences(batch);
   buildPlaza(batch, rand);
-  buildHouses(batch, rand);
+  buildRows(batch, rand);
   buildLanterns(batch);
   batch.build(town);
   lights.forEach((light) => town.add(light));
-  return { houses: houseSpots.length };
+  return { buildings: placedBuildings.length };
 }

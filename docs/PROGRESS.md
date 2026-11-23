@@ -46,10 +46,19 @@
   - Bank made bigger (13 x 9) with 3 walk-in vaults of different sizes behind the teller counter (small 2.6 x 2.2, medium 3.9 x 2.9, large 5.5 x 3.6). Iron walls, open round vault doors, piles of coins: silver/gold stacks, heaps, gold bars, treasure chests, coin sacks. The coins are decoration only (can't be picked up yet).
   - Two candle chandeliers inside the bank give real light. Lanterns and props no longer block doorways.
 
+- **Giant packed town (2026-11-23)** - replaces the earlier town
+  - Every building has 10x the floor space (about 3x wider, deeper and taller). Normal houses removed for now.
+  - Town moved to the far side of the planet (about 110 steps from the ship along the dirt road). Planet size unchanged.
+  - Layout: a raised square plaza in the middle with the giant bank (41 x 28, 22 tall), 4 stone staircases, a street around the plaza, then rows of buildings standing wall to wall on all 4 sides, a back street behind them, and 4 cross streets (the main one leads to the ship).
+  - Buildings: Inn & Hotel, Hospital, General Store, Tavern, Blacksmith, Bakery, Post Office, Tailor, Library + narrower fillers (Herbalist, Shoemaker...). Insides scaled up too (rows of beds, shelves, tables, forges, bookshelf aisles). Bank vaults are now 8 x 7, 13 x 9 and 18 x 11 with hundreds of coin stacks.
+  - Buildings are gently bent to follow the planet's curve (`curveGeometry` / `warpPoint` in `src/geo.js`) so they sit flat on the ground and touch their neighbors. Every placement is checked so buildings never overlap each other or the streets.
+  - `townWalkways` now also lists every building's door (`doors`: a spot outside and inside), for NPCs later.
+
 ## Untested by a human
 - How the controls *feel* (speed, jump height, mouse sensitivity).
 - Camera can go inside trees or through house walls when it is right behind one.
 - How walking around inside houses feels.
+- Whether the bigger town lags on Philip's computer (about 480,000 triangles in the scene now).
 
 ## Next
 - Philip will add health and oxygen himself later.
