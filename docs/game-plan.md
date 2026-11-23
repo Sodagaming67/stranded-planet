@@ -5,6 +5,7 @@ You crash your spaceship on a tiny planet covered in wild land. A big rustic ali
 Make money to survive. Final goal: repair the ship (e.g. 10 rare parts) — or choose to stay.
 
 ## Ideas so far
+- Money: silver and gold coins (10 silver = 1 gold), shown top-right.
 - Tiny round planet with gravity pulling toward the center (walk all the way around).
 - Money: mining crystals, odd jobs for townspeople, alien farming, selling crash scrap, fishing.
 - Survival: hunger + oxygen bars, day/night (nights cold/dangerous), rent at the inn or build a house.

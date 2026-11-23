@@ -35,6 +35,16 @@
     .bar .track { width: 220px; height: 20px; background: rgba(0, 0, 0, 0.45); border: 2px solid #fff; border-radius: 6px; overflow: hidden; }
     .bar .fill { height: 100%; background: linear-gradient(#ff6b6b, #d62839); transition: width 0.2s; }
     .bar .icon { font-size: 22px; }
+    #money {
+      position: fixed; z-index: 1; top: 16px; right: 16px; display: flex; gap: 14px; padding: 8px 14px;
+      background: rgba(20, 14, 8, 0.6); border: 2px solid rgba(232, 194, 90, 0.8); border-radius: 12px;
+      font-family: Georgia, 'Times New Roman', serif; font-weight: 700; font-size: 22px; color: #fff;
+      text-shadow: 0 2px 0 rgba(0, 0, 0, 0.6); pointer-events: none;
+    }
+    #money .row { display: flex; align-items: center; gap: 7px; }
+    #money .coin { width: 22px; height: 22px; border-radius: 50%; box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.25), 0 2px 0 rgba(0, 0, 0, 0.4); }
+    #money .gold { background: radial-gradient(circle at 35% 30%, #fff3b0, #e8c25a 45%, #a87b12); }
+    #money .silver { background: radial-gradient(circle at 35% 30%, #ffffff, #c9ced6 45%, #7d838d); }
     #hint b { background: rgba(255, 255, 255, 0.18); padding: 1px 7px; border-radius: 4px; }
   </style>
 </head>
@@ -45,6 +55,10 @@
       <div class="track"><div class="fill" id="health-fill"></div></div>
       <span id="health-text">100</span>
     </div>
+  </div>
+  <div id="money" title="10 silver coins = 1 gold coin">
+    <div class="row"><span class="coin gold"></span><span id="gold-count">0</span></div>
+    <div class="row"><span class="coin silver"></span><span id="silver-count">0</span></div>
   </div>
   <div id="hint">
     <div class="planet"></div>

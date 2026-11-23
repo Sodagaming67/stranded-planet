@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { createWorld, RADIUS, heightAt } from './world.js';
 import { createPlayer } from './player.js';
 import { readInput } from './input.js';
+import { wallet } from './money.js';
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -68,13 +69,23 @@ function followPlayer() {
 
 const healthFill = document.getElementById('health-fill');
 const healthText = document.getElementById('health-text');
+const goldCount = document.getElementById('gold-count');
+const silverCount = document.getElementById('silver-count');
 let shownHealth = -1;
+let shownMoney = '';
 
 function updateHud() {
-  if (player.health === shownHealth) return;
-  shownHealth = player.health;
-  healthFill.style.width = `${(100 * player.health) / player.maxHealth}%`;
-  healthText.textContent = Math.ceil(player.health);
+  if (player.health !== shownHealth) {
+    shownHealth = player.health;
+    healthFill.style.width = `${(100 * player.health) / player.maxHealth}%`;
+    healthText.textContent = Math.ceil(player.health);
+  }
+  const money = `${wallet.gold}/${wallet.silver}`;
+  if (money !== shownMoney) {
+    shownMoney = money;
+    goldCount.textContent = wallet.gold;
+    silverCount.textContent = wallet.silver;
+  }
 }
 
 const hint = document.getElementById('hint');

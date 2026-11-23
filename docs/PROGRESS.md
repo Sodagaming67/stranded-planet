@@ -40,6 +40,12 @@
   - Giant stone BANK in the middle of the hilltop plaza: columns, front steps, gold sign + coin, teller counter, round vault door. Plaza made bigger; well + 2 market stalls moved behind the bank.
   - Town is a bit bigger (outer ring road moved out) so the bigger buildings fit.
 
+- **Money + bank vaults (2026-11-23)**
+  - Currency is silver and gold coins (10 silver = 1 gold), in `src/money.js` (`wallet`). You start with 0 gold, 10 silver.
+  - Money counter in the top-right corner (gold coin + silver coin).
+  - Bank made bigger (13 x 9) with 3 walk-in vaults of different sizes behind the teller counter (small 2.6 x 2.2, medium 3.9 x 2.9, large 5.5 x 3.6). Iron walls, open round vault doors, piles of coins: silver/gold stacks, heaps, gold bars, treasure chests, coin sacks. The coins are decoration only (can't be picked up yet).
+  - Two candle chandeliers inside the bank give real light. Lanterns and props no longer block doorways.
+
 ## Untested by a human
 - How the controls *feel* (speed, jump height, mouse sensitivity).
 - Camera can go inside trees or through house walls when it is right behind one.

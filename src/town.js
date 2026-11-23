@@ -157,6 +157,8 @@ const M = {
   bankStone: mat('#d8cfbd'),
   slate: mat('#4f5560'),
   gold: mat('#d4a017', { metalness: 0.6, roughness: 0.35, emissive: '#4a3500', emissiveIntensity: 0.4 }),
+  silver: mat('#c9ced6', { metalness: 0.6, roughness: 0.3, emissive: '#2a2d33', emissiveIntensity: 0.4 }),
+  sack: mat('#a08560'),
 };
 
 const pick = (rand, list) => list[Math.floor(rand() * list.length)];
@@ -405,9 +407,12 @@ function buildBuilding(rand, spec) {
   return { obj: g, boxes, part, solid, top, BASE };
 }
 
+const BANK_W = 13;
+const BANK_D = 9;
+
 function buildBank(rand) {
-  const w = 11;
-  const d = 7;
+  const w = BANK_W;
+  const d = BANK_D;
   const bank = buildBuilding(rand, {
     name: 'BANK', sign: false, w, d, h: 7, door: 2.8, doorH: 4, base: 0.75, wall: M.bankStone, roof: M.slate,
   });
@@ -417,7 +422,7 @@ function buildBank(rand) {
   solid(box(w + 0.5, BASE + 1, 2.6), M.bankStone, 0, (BASE - 1) / 2, front + 1.55, BASE);
   solid(box(w + 0.5, 1.5, 0.6), M.bankStone, 0, -0.25, front + 3.15, 0.5);
   solid(box(w + 0.5, 1.25, 0.6), M.bankStone, 0, -0.375, front + 3.75, 0.25);
-  for (const x of [-4.7, -3.3, -1.9, 1.9, 3.3, 4.7]) {
+  for (const x of [-5.7, -3.9, -2.1, 2.1, 3.9, 5.7]) {
     part(new THREE.CylinderGeometry(0.35, 0.38, 7, 12), M.bankStone, x, BASE + 3.5, front + 2.3);
     part(box(0.9, 0.3, 0.9), M.bankStone, x, BASE + 0.15, front + 2.3);
     part(box(0.9, 0.3, 0.9), M.bankStone, x, top - 0.15, front + 2.3);
@@ -431,18 +436,102 @@ function buildBank(rand) {
     { depth: 0.5, bevelEnabled: false },
   );
   part(pediment, M.bankStone, 0, top + 0.7, front + 2.25);
-  const coin = part(new THREE.CylinderGeometry(0.55, 0.55, 0.1, 16), M.gold, 0, top + 1.35, front + 2.8);
-  coin.rotation.x = Math.PI / 2;
+  const emblem = part(new THREE.CylinderGeometry(0.55, 0.55, 0.1, 16), M.gold, 0, top + 1.35, front + 2.8);
+  emblem.rotation.x = Math.PI / 2;
   part(box(4.8, 0.6, 0.1), signMaterial('BANK', 4.8, 0.6, { bg: '#3a3328', edge: '#e8c25a', text: '#e8c25a' }), 0, top + 0.35, front + 2.8);
 
-  solid(box(w - 2.6, 1.2, 0.6), M.woodDark, 0, BASE + 0.6, -0.4, BASE + 1.2);
-  for (let i = 0; i < 4; i++) part(box(0.08, 1.2, 0.08), M.gold, -w / 2 + 1.6 + (i * (w - 3.2)) / 3, BASE + 1.8, -0.4);
-  const vault = part(new THREE.CylinderGeometry(1.3, 1.3, 0.25, 20), M.iron, 0, BASE + 1.9, -d / 2 + 0.42);
-  vault.rotation.x = Math.PI / 2;
-  const ring = part(new THREE.CylinderGeometry(1.45, 1.45, 0.12, 20), M.gold, 0, BASE + 1.9, -d / 2 + 0.33);
-  ring.rotation.x = Math.PI / 2;
-  const wheel = part(new THREE.CylinderGeometry(0.35, 0.35, 0.2, 8), M.gold, 0, BASE + 1.9, -d / 2 + 0.6);
-  wheel.rotation.x = Math.PI / 2;
+  const floorY = BASE + 0.06;
+  bank.lights = [];
+  for (const x of [-w / 4, w / 4]) {
+    part(box(0.06, 1.6, 0.06), M.iron, x, top - 0.8, -0.5);
+    part(new THREE.CylinderGeometry(0.9, 0.9, 0.08, 10), M.iron, x, top - 1.6, -0.5);
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      part(box(0.08, 0.22, 0.08), M.flame, x + Math.cos(a) * 0.8, top - 1.45, -0.5 + Math.sin(a) * 0.8);
+    }
+    bank.lights.push(new THREE.Vector3(x, top - 1.9, -0.5));
+  }
+  solid(box(w - 3.4, 1.2, 0.6), M.woodDark, 0, floorY + 0.6, 1.4, floorY + 1.2);
+  for (let i = 0; i < 5; i++) part(box(0.08, 1.2, 0.08), M.gold, -w / 2 + 1.8 + (i * (w - 3.6)) / 4, floorY + 1.8, 1.4);
+
+  // Three vault rooms of different sizes along the back wall, each full of coins.
+  const back = -d / 2 + 0.3;
+  const vaultRoom = (x0, x1, depth, fill) => {
+    const cx = (x0 + x1) / 2;
+    const width = x1 - x0;
+    const wallH = 3.2;
+    const T = 0.25;
+    const doorW = 1.3;
+    const frontZ = back + depth;
+    const ironWall = (x, z, bw, bd) => solid(box(bw, wallH, bd), M.iron, x, floorY + wallH / 2, z, floorY + wallH);
+    ironWall(x0 + T / 2, back + depth / 2, T, depth);
+    ironWall(x1 - T / 2, back + depth / 2, T, depth);
+    const seg = (width - doorW) / 2;
+    ironWall(x0 + seg / 2, frontZ - T / 2, seg, T);
+    ironWall(x1 - seg / 2, frontZ - T / 2, seg, T);
+    part(box(doorW, wallH - 2.5, T), M.iron, cx, floorY + 2.5 + (wallH - 2.5) / 2, frontZ - T / 2);
+    part(box(width + 0.1, 0.2, depth + 0.1), M.iron, cx, floorY + wallH + 0.1, back + depth / 2);
+    boxes.push({ x: cx, z: back + depth / 2, hx: width / 2, hz: depth / 2, y0: floorY + 2.5, y1: floorY + wallH + 0.2 });
+    for (const sx of [-1, 1]) part(box(0.12, 2.5, 0.12), M.gold, cx + sx * (doorW / 2 + 0.06), floorY + 1.25, frontZ + 0.02);
+
+    const door = part(new THREE.CylinderGeometry(0.7, 0.7, 0.22, 18), M.iron, cx + doorW / 2 + 0.12, floorY + 1.2, frontZ + 0.75);
+    door.rotation.z = Math.PI / 2;
+    const wheel = part(new THREE.CylinderGeometry(0.25, 0.25, 0.12, 8), M.gold, cx + doorW / 2 + 0.3, floorY + 1.2, frontZ + 0.75);
+    wheel.rotation.z = Math.PI / 2;
+
+    const spot = (marginX = 0.5, marginZ = 0.4) => ({
+      x: x0 + T + marginX + rand() * (width - 2 * T - 2 * marginX),
+      z: back + marginZ + rand() * (depth - T - 2 * marginZ - 0.6),
+    });
+    fill(spot, floorY);
+  };
+
+  const stack = (material, x, z, y, coins) => part(new THREE.CylinderGeometry(0.17, 0.17, coins * 0.06, 10), material, x, y + coins * 0.03, z);
+  const heap = (material, x, z, y, radius, height) => part(new THREE.ConeGeometry(radius, height, 8), material, x, y + height / 2, z);
+  const stacks = (spot, y, count, goldShare) => {
+    for (let i = 0; i < count; i++) {
+      const p = spot();
+      stack(rand() < goldShare ? M.gold : M.silver, p.x, p.z, y, 4 + Math.floor(rand() * 10));
+    }
+  };
+  const chest = (x, z, y) => {
+    part(box(1, 0.6, 0.65), M.woodDark, x, y + 0.3, z);
+    part(box(1.04, 0.08, 0.69), M.gold, x, y + 0.45, z);
+    heap(M.gold, x, z, y + 0.6, 0.42, 0.3);
+  };
+  const bars = (x, z, y) => {
+    for (let layer = 0; layer < 3; layer++) {
+      for (let i = 0; i < 3 - layer; i++) {
+        part(box(0.45, 0.15, 0.22), M.gold, x + (i - (2 - layer) / 2) * 0.48, y + 0.075 + layer * 0.15, z);
+      }
+    }
+  };
+  const sack = (x, z, y) => {
+    const s = part(new THREE.IcosahedronGeometry(0.32, 0), M.sack, x, y + 0.28, z);
+    s.scale.set(1, 0.9, 1);
+    part(box(0.12, 0.12, 0.12), M.sack, x, y + 0.6, z);
+  };
+
+  vaultRoom(-w / 2 + 0.35, -3.6, 2.2, (spot, y) => {
+    stacks(spot, y, 8, 0.2);
+    const p = spot();
+    sack(p.x, p.z, y);
+  });
+  vaultRoom(-3.4, 0.5, 2.9, (spot, y) => {
+    heap(M.silver, -2.4, back + 0.9, y, 0.8, 0.55);
+    stacks(spot, y, 10, 0.5);
+    chest(-0.5, back + 0.6, y);
+    const p = spot();
+    sack(p.x, p.z, y);
+  });
+  vaultRoom(0.7, w / 2 - 0.35, 3.6, (spot, y) => {
+    heap(M.gold, 3.6, back + 1.2, y, 1.2, 0.95);
+    heap(M.silver, 1.6, back + 0.8, y, 0.7, 0.45);
+    bars(5.2, back + 0.5, y);
+    chest(1.8, back + 2.2, y);
+    chest(5.3, back + 1.6, y);
+    stacks(spot, y, 14, 0.7);
+  });
   return bank;
 }
 
@@ -674,7 +763,7 @@ function buildLanterns(batch) {
       const r = row.radius(t);
       const u = r * Math.cos(t);
       const v = r * Math.sin(t);
-      if (nearStairs(u, v, 1.5) || roadGap(u, v) < 0.2) continue;
+      if (nearStairs(u, v, 1.5) || roadGap(u, v) < 0.2 || nearDoor(u, v)) continue;
       const lantern = placeLocal(makeLantern(), u, v, row.outward * Math.cos(t), row.outward * Math.sin(t));
       batch.add(lantern);
       addCollider(lantern.position.clone(), 0.25, 2.8);
@@ -709,8 +798,10 @@ function spotIsFree(u, v, fu, fv, w, d, level) {
   return true;
 }
 
+const nearDoor = (u, v) => houseSpots.some((h) => Math.hypot(u - h.u - h.fu * h.hd, v - h.v - h.fv * h.hd) < 2.2);
+
 function placeProp(batch, rand, u, v, level) {
-  if (Math.abs(townHeight(u, v) - level) > 0.02 || roadGap(u, v) < 0.3 || nearStairs(u, v, 1)) return;
+  if (Math.abs(townHeight(u, v) - level) > 0.02 || roadGap(u, v) < 0.3 || nearStairs(u, v, 1) || nearDoor(u, v)) return;
   const roll = rand();
   const { obj, r, top } = roll < 0.35 ? makeBarrel() : roll < 0.65 ? makeCrate(rand) : roll < 0.85 ? makeHay() : makeCart();
   const spin = rand() * Math.PI * 2;
@@ -791,6 +882,8 @@ function buildHouses(batch, rand) {
   });
 }
 
+const lights = [];
+
 function buildPlaza(batch, rand) {
   const c = LEVELS[1].center;
   const facing = SHIP_ANGLE + 0.4;
@@ -802,15 +895,20 @@ function buildPlaza(batch, rand) {
   placeLocal(bank.obj, c.u - fu, c.v - fv, fu, fv);
   batch.add(bank.obj);
   addBoxesFrom(bank.obj, bank.boxes);
-  houseSpots.push(footprint(c.u + fu * 0.8, c.v + fv * 0.8, fu, fv, 11.5, 10.6));
+  for (const spot of bank.lights) {
+    const light = new THREE.PointLight('#ffc477', 30, 16, 1.4);
+    light.position.copy(bank.obj.localToWorld(spot.clone()));
+    lights.push(light);
+  }
+  houseSpots.push(footprint(c.u + fu * 0.75, c.v + fv * 0.75, fu, fv, BANK_W + 0.5, BANK_D + 4));
   placedBuildings.push('BANK');
 
-  const behind = at(facing + Math.PI, 8.5);
+  const behind = at(facing + Math.PI, 8.6);
   const well = placeLocal(makeWell(), behind.u, behind.v, behind.fu, behind.fv);
   batch.add(well);
   addCollider(well.position.clone(), 1.3, 0.9);
-  for (const a of [-0.6, 0.6]) {
-    const spot = at(facing + Math.PI + a, 8.3);
+  for (const a of [-1.68, 1.68]) {
+    const spot = at(facing + a, 9.35);
     const stall = placeLocal(makeStall(rand), spot.u, spot.v, spot.fu, spot.fv);
     batch.add(stall);
     addBoxesFrom(stall, [{ x: 0, z: 0.4, hx: 1.2, hz: 0.4, y0: -2, y1: 0.9 }]);
@@ -827,9 +925,10 @@ export function createTown(scene, heightAt) {
   const batch = new Batcher();
   buildStairs(batch);
   buildFences(batch);
-  buildLanterns(batch);
   buildPlaza(batch, rand);
   buildHouses(batch, rand);
+  buildLanterns(batch);
   batch.build(town);
+  lights.forEach((light) => town.add(light));
   return { houses: houseSpots.length };
 }
