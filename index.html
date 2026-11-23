@@ -8,9 +8,26 @@
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { width: 100%; height: 100%; overflow: hidden; background: #05060f; }
     canvas { display: block; }
+    #hint {
+      position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 14px; pointer-events: none; color: #fff; font-family: system-ui, sans-serif; text-align: center;
+      background: radial-gradient(circle, rgba(5, 6, 15, 0.25), rgba(5, 6, 15, 0.7));
+    }
+    #hint h1 { font-size: 48px; letter-spacing: 2px; text-shadow: 0 4px 0 #ff7b29; }
+    #hint .play { font-size: 22px; padding: 10px 26px; border: 2px solid #fff; border-radius: 10px; background: rgba(255, 255, 255, 0.12); }
+    #hint .keys { font-size: 15px; opacity: 0.85; line-height: 1.8; }
+    #hint b { background: rgba(255, 255, 255, 0.18); padding: 1px 7px; border-radius: 4px; }
   </style>
 </head>
 <body>
+  <div id="hint">
+    <h1>STRANDED PLANET</h1>
+    <div class="play">Click to play</div>
+    <div class="keys">
+      <b>W A S D</b> move &nbsp; <b>Mouse</b> look &nbsp; <b>Space</b> jump &nbsp; <b>Shift</b> run<br />
+      <b>Scroll</b> zoom &nbsp; <b>Esc</b> pause
+    </div>
+  </div>
   <script type="module" src="/src/main.js"></script>
 </body>
 </html>

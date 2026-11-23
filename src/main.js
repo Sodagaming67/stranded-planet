@@ -1,31 +1,75 @@
 import * as THREE from 'three';
+import { createWorld, RADIUS, heightAt } from './world.js';
+import { createPlayer } from './player.js';
+import { readInput } from './input.js';
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.35;
 document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color('#05060f');
+scene.background = new THREE.Color('#0b1026');
 
-const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-camera.position.set(0, 2, 12);
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1500);
 
-scene.add(new THREE.AmbientLight('#8899ff', 0.5));
-const sun = new THREE.DirectionalLight('#fff4e0', 2);
-sun.position.set(5, 5, 5);
-scene.add(sun);
+const skyLight = new THREE.HemisphereLight('#cfe8ff', '#4a3560', 2);
+scene.add(skyLight);
+const sun = new THREE.DirectionalLight('#fff1dc', 3);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -30, right: 30, top: 30, bottom: -30, near: 1, far: 120 });
+sun.shadow.bias = -0.0005;
+sun.shadow.normalBias = 0.05;
+scene.add(sun, sun.target);
 
-const planet = new THREE.Mesh(
-  new THREE.IcosahedronGeometry(4, 2),
-  new THREE.MeshStandardMaterial({ color: '#6fbf73', flatShading: true })
-);
-scene.add(planet);
+const world = createWorld(scene);
+const player = createPlayer(scene, world.spawnDir, world.spawnFacing);
 
-const starGeo = new THREE.BufferGeometry();
-const starPos = new Float32Array(1500 * 3).map(() => (Math.random() - 0.5) * 400);
-starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
-scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: '#ffffff', size: 0.6 })));
+const camForward = world.spawnFacing.clone();
+let pitch = 0.25;
+let distance = 9;
+const up = new THREE.Vector3();
+const lookAt = new THREE.Vector3();
+const sunSide = new THREE.Vector3();
+const SUN_HINT = new THREE.Vector3(1, 0.3, 0.2).normalize();
+
+function turnCamera(input) {
+  up.copy(player.position).normalize();
+  camForward.addScaledVector(up, -camForward.dot(up)).normalize();
+  camForward.applyAxisAngle(up, -input.dx * 0.0025);
+  pitch = THREE.MathUtils.clamp(pitch + input.dy * 0.002, -0.35, 1.3);
+  distance = THREE.MathUtils.clamp(distance + input.wheel * 0.01, 4, 18);
+}
+
+function followPlayer() {
+  up.copy(player.position).normalize();
+  camForward.addScaledVector(up, -camForward.dot(up)).normalize();
+  lookAt.copy(player.position).addScaledVector(up, 1.7);
+  camera.position.copy(lookAt)
+    .addScaledVector(camForward, -distance * Math.cos(pitch))
+    .addScaledVector(up, distance * Math.sin(pitch));
+  const camDir = camera.position.clone().normalize();
+  const minHeight = RADIUS + heightAt(camDir) + 0.5;
+  if (camera.position.length() < minHeight) camera.position.setLength(minHeight);
+  camera.up.copy(up);
+  camera.lookAt(lookAt);
+
+  sunSide.copy(SUN_HINT).addScaledVector(up, -SUN_HINT.dot(up)).normalize();
+  sun.position.copy(player.position).addScaledVector(up, 40).addScaledVector(sunSide, 25);
+  sun.target.position.copy(player.position);
+  skyLight.position.copy(up);
+}
+
+const hint = document.getElementById('hint');
+renderer.domElement.addEventListener('click', () => renderer.domElement.requestPointerLock());
+document.addEventListener('pointerlockchange', () => {
+  hint.style.display = document.pointerLockElement ? 'none' : 'flex';
+});
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
@@ -33,7 +77,14 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-renderer.setAnimationLoop(() => {
-  planet.rotation.y += 0.003;
+let last = performance.now();
+renderer.setAnimationLoop((now) => {
+  const dt = Math.min((now - last) / 1000, 0.05);
+  last = now;
+  const input = readInput();
+  turnCamera(input);
+  player.update(dt, input, camForward);
+  followPlayer();
+  world.update(now / 1000);
   renderer.render(scene, camera);
 });

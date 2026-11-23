@@ -11,7 +11,7 @@ Make money to survive. Final goal: repair the ship (e.g. 10 rare parts) — or c
 - Spending: better tools, jetpack, bigger oxygen tank, furniture.
 
 ## Build stages
-1. Round planet, gravity, walking, jumping, camera
+1. ~~Round planet, gravity, walking, jumping, camera~~ (done 2026-11-23)
 2. Town, NPCs to talk to, shop
 3. Mining, selling, money, hunger + oxygen
 4. Jobs, farming, day/night, house
