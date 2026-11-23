@@ -4,15 +4,15 @@ import {
 } from './geo.js';
 
 export const TOWN_DIR = new THREE.Vector3(0, Math.cos(1.15), Math.sin(1.15));
-export const TOWN_CORE = 56;
-export const TOWN_EDGE = 66;
+export const TOWN_CORE = 58;
+export const TOWN_EDGE = 68;
 const LEVEL_H = 3.5;
 const STAIR_HALF = 1.7;
 const STAIR_LEN = 3;
 const STEPS = 8;
 const RING0 = 35.5;
 const RING1_IN = 4.4;
-const RING_OUT = 53.5;
+const RING_OUT = 55;
 const LANE_OUT = 3.8;
 const SETBACK = 1.3;
 const [T1, T2] = tangentBasis(TOWN_DIR);
@@ -45,7 +45,7 @@ const LEVELS = [
   },
   {
     center: { u: 3, v: -2 },
-    radius: (t) => 11 + 0.8 * Math.sin(4 * t + 2),
+    radius: (t) => 12.5 + 0.8 * Math.sin(4 * t + 2),
     stairAngles: [0.4, 2.5, 4.6].map((a) => SHIP_ANGLE + a),
   },
 ];
@@ -152,6 +152,11 @@ const M = {
   water: mat('#3d6e8c', { roughness: 0.2 }),
   cloth: ['#b5523b', '#d9a441', '#4f7a5a', '#6b4c8a'].map((c) => mat(c)),
   flame: mat('#ffb347', { emissive: '#ff8c1a', emissiveIntensity: 1.5 }),
+  linen: mat('#efe9dc'),
+  signBoard: mat('#5a3a22'),
+  bankStone: mat('#d8cfbd'),
+  slate: mat('#4f5560'),
+  gold: mat('#d4a017', { metalness: 0.6, roughness: 0.35, emissive: '#4a3500', emissiveIntensity: 0.4 }),
 };
 
 const pick = (rand, list) => list[Math.floor(rand() * list.length)];
@@ -170,15 +175,73 @@ const HOUSE_SIZES = [
   { w: 5, d: 5, h: 4.8 },
 ];
 
-function buildHouse(rand, w, d, wallH) {
-  const style = pick(rand, WALL_STYLES);
-  const roofMat = pick(rand, M.roofs);
+const shop = (name, extra = {}) => ({ name, w: 6.5, d: 5, h: 3.6, door: 1.8, awning: true, inside: 'shop', wall: M.planks[2], ...extra });
+const hotel = (name) => ({ name, w: 10, d: 6, h: 6.4, door: 2, balcony: true, inside: 'beds', wall: M.planks[0] });
+
+// Every one of these gets built first; then the district fills up with MORE_SHOPS.
+const SHOP_TYPES = [
+  hotel('INN & HOTEL'),
+  { name: 'HOSPITAL', w: 11, d: 6, h: 4.6, door: 2.2, inside: 'beds', wall: M.stoneWall },
+  shop('GENERAL STORE', { w: 7.5, d: 5.5, h: 3.8, wall: M.plaster, frame: true, door: 2 }),
+  { name: 'TAVERN', w: 9, d: 6, h: 4.2, door: 2, inside: 'tavern', wall: M.planks[1] },
+  { name: 'BLACKSMITH', w: 7, d: 5.5, h: 3.6, door: 2.2, inside: 'forge', wall: M.stoneWall, chimney: true },
+  shop('BAKERY', { wall: M.plasterWarm, frame: true, chimney: true }),
+  shop('POST OFFICE', { wall: M.plaster, frame: true, awning: false }),
+  shop('TAILOR'),
+  { name: 'LIBRARY', w: 8, d: 5.5, h: 4.8, door: 2, inside: 'books', wall: M.stoneWall },
+];
+const MORE_SHOPS = [
+  shop('GROCER', { wall: M.planks[1] }),
+  hotel('HOTEL'),
+  shop('POTION SHOP', { wall: M.plaster, frame: true }),
+  { name: 'CLINIC', w: 8, d: 5.5, h: 3.8, door: 2, inside: 'beds', wall: M.stoneWall },
+  shop('CARPENTER', { wall: M.planks[0], awning: false }),
+  shop('BUTCHER', { wall: M.plasterWarm, frame: true }),
+  shop('TOY SHOP', { wall: M.planks[2] }),
+  { name: 'BOOK SHOP', w: 6.5, d: 5, h: 3.8, door: 1.8, inside: 'books', wall: M.plaster, frame: true },
+  shop('FARM SUPPLY', { wall: M.planks[1], awning: false }),
+  hotel('BOARDING HOUSE'),
+];
+
+function signMaterial(text, w, h, colors = {}) {
+  if (typeof document === 'undefined') return M.signBoard;
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = Math.round((512 * h) / w);
+  const g = canvas.getContext('2d');
+  g.fillStyle = colors.bg ?? '#5a3a22';
+  g.fillRect(0, 0, canvas.width, canvas.height);
+  g.strokeStyle = colors.edge ?? '#2e1d10';
+  g.lineWidth = 10;
+  g.strokeRect(5, 5, canvas.width - 10, canvas.height - 10);
+  let size = Math.round(canvas.height * 0.55);
+  const font = () => `bold ${size}px Georgia, 'Times New Roman', serif`;
+  g.font = font();
+  while (g.measureText(text).width > canvas.width - 50 && size > 12) {
+    size -= 2;
+    g.font = font();
+  }
+  g.fillStyle = colors.text ?? '#f1e2bf';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillText(text, canvas.width / 2, canvas.height / 2 + 2);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 4;
+  return new THREE.MeshStandardMaterial({ map: texture, roughness: 0.9 });
+}
+
+function buildBuilding(rand, spec) {
+  const style = spec.wall ? spec : pick(rand, WALL_STYLES);
+  const roofMat = spec.roof ?? pick(rand, M.roofs);
+  const { w, d } = spec;
+  const wallH = spec.h;
   const g = new THREE.Group();
   const boxes = [];
   const T = 0.3;
-  const BASE = 0.25;
-  const DOOR = 1.6;
-  const DOOR_H = 2.6;
+  const BASE = spec.base ?? 0.25;
+  const DOOR = spec.door ?? 1.6;
+  const DOOR_H = spec.doorH ?? 2.6;
   const top = BASE + wallH;
   const part = (geo, material, x, y, z) => {
     const m = new THREE.Mesh(geo, material);
@@ -186,12 +249,19 @@ function buildHouse(rand, w, d, wallH) {
     g.add(m);
     return m;
   };
+  const solid = (geo, material, x, y, z, y1) => {
+    const m = part(geo, material, x, y, z);
+    geo.computeBoundingBox();
+    const bb = geo.boundingBox;
+    boxes.push({ x, z, hx: (bb.max.x - bb.min.x) / 2, hz: (bb.max.z - bb.min.z) / 2, y0: -2, y1 });
+    return m;
+  };
   const wall = (x, z, bw, bd, y0 = 0) => {
     part(box(bw, wallH - y0, bd), style.wall, x, BASE + (y0 + wallH) / 2, z);
     boxes.push({ x, z, hx: bw / 2, hz: bd / 2, y0: y0 === 0 ? -2 : BASE + y0, y1: top });
   };
 
-  part(box(w + 0.5, 1.25, d + 0.5), M.stone, 0, BASE - 0.625, 0);
+  part(box(w + 0.5, BASE + 1, d + 0.5), M.stone, 0, (BASE - 1) / 2, 0);
   part(box(w - 2 * T, 0.06, d - 2 * T), M.floor, 0, BASE + 0.03, 0);
   boxes.push({ x: 0, z: 0, hx: w / 2 + 0.25, hz: d / 2 + 0.25, y0: -2, y1: BASE + 0.06 });
 
@@ -214,7 +284,7 @@ function buildHouse(rand, w, d, wallH) {
     part(box(DOOR + 0.44, 0.22, 0.42), M.timber, 0, BASE + DOOR_H + 0.11, d / 2 - 0.15);
   }
 
-  const windowAt = (x, z, rotY) => {
+  const windowAt = (x, y, z, rotY) => {
     const wg = new THREE.Group();
     wg.add(
       new THREE.Mesh(box(0.9, 0.8, 0.06), M.window),
@@ -225,16 +295,24 @@ function buildHouse(rand, w, d, wallH) {
     wg.children[1].position.set(-0.68, 0, 0.02);
     wg.children[2].position.set(0.68, 0, 0.02);
     wg.children[3].position.set(0, -0.45, 0.05);
-    wg.position.set(x, BASE + 1.7, z);
+    wg.position.set(x, y, z);
     wg.rotation.y = rotY;
     g.add(wg);
   };
-  windowAt(0, -d / 2 - 0.03, Math.PI);
-  windowAt(w / 2 + 0.03, 0, Math.PI / 2);
-  windowAt(-w / 2 - 0.03, 0, -Math.PI / 2);
+  const windowRows = wallH >= 5 ? [BASE + 1.7, BASE + 4.4] : [BASE + 1.7];
+  for (const y of windowRows) {
+    windowAt(0, y, -d / 2 - 0.03, Math.PI);
+    for (const sx of [-1, 1]) {
+      windowAt(sx * (w / 2 + 0.03), y, 0, sx * (Math.PI / 2));
+      if (w >= 9) windowAt(sx * (w / 4), y, -d / 2 - 0.03, Math.PI);
+      if (d >= 6.5) windowAt(sx * (w / 2 + 0.03), y, -d / 4, sx * (Math.PI / 2));
+    }
+  }
   if (seg > 2.2) {
-    windowAt(-(DOOR / 2 + seg / 2), d / 2 + 0.03, 0);
-    windowAt(DOOR / 2 + seg / 2, d / 2 + 0.03, 0);
+    for (const sx of [-1, 1]) windowAt(sx * (DOOR / 2 + seg / 2), BASE + 1.7, d / 2 + 0.03, 0);
+  }
+  if (wallH >= 5) {
+    for (const sx of [-1, 1]) windowAt(sx * (w / 2 - 1.3), BASE + 4.4, d / 2 + 0.03, 0);
   }
 
   const over = 0.45;
@@ -253,10 +331,119 @@ function buildHouse(rand, w, d, wallH) {
   gable.rotateY(Math.PI / 2);
   gable.translate(-w / 2, 0, 0);
   part(gable, style.wall, 0, top, 0);
-  if (rand() < 0.4) part(box(0.7, rh + 1.4, 0.7), M.stone, w / 2 - 0.9, top + (rh + 1.4) / 2 - 0.2, -d / 4);
+  if (spec.chimney ?? (!spec.name && rand() < 0.4)) {
+    part(box(0.7, rh + 1.4, 0.7), M.stone, w / 2 - 0.9, top + (rh + 1.4) / 2 - 0.2, -d / 4);
+  }
   boxes.push({ x: 0, z: 0, hx: w / 2 + over, hz: d / 2 + over, y0: top, y1: top + rh * 0.55 });
 
-  return { obj: g, boxes };
+  if (spec.name && spec.sign !== false) {
+    const signH = Math.min(0.85, wallH - DOOR_H - 0.25);
+    const signW = Math.min(w - 1.5, signH * 4.6);
+    part(box(signW, signH, 0.1), signMaterial(spec.name, signW, signH), 0, BASE + DOOR_H + (wallH - DOOR_H) / 2, d / 2 + 0.06);
+  }
+  if (spec.awning && seg > 2.2) {
+    const cloth = pick(rand, M.cloth);
+    for (const sx of [-1, 1]) {
+      const awning = part(box(1.7, 0.06, 1), cloth, sx * (DOOR / 2 + seg / 2), BASE + 2.4, d / 2 + 0.5);
+      awning.rotation.x = 0.4;
+    }
+  }
+  if (spec.balcony) {
+    const y = BASE + 3.2;
+    part(box(w - 0.6, 0.15, 1.3), M.wood, 0, y, d / 2 + 0.65);
+    boxes.push({ x: 0, z: d / 2 + 0.65, hx: w / 2 - 0.3, hz: 0.65, y0: y - 0.1, y1: y + 0.08 });
+    part(box(w - 0.6, 0.08, 0.08), M.woodDark, 0, y + 0.9, d / 2 + 1.25);
+    for (let x = -w / 2 + 0.4; x <= w / 2 - 0.4; x += 0.8) part(box(0.08, 0.9, 0.08), M.woodDark, x, y + 0.45, d / 2 + 1.25);
+    for (const sx of [-1, 1]) part(box(0.2, y, 0.2), M.woodDark, sx * (w / 2 - 0.5), y / 2, d / 2 + 1.2);
+    part(box(1.2, 2.2, 0.06), M.window, 0, y + 1.2, d / 2 + 0.03);
+  }
+
+  const floorY = BASE + 0.06;
+  const inside = {
+    shop() {
+      solid(box(Math.min(w * 0.5, 4), 1, 0.7), M.wood, 0, floorY + 0.5, -d / 2 + 1.6, floorY + 1);
+      solid(box(w - 1, 2.2, 0.4), M.woodDark, 0, floorY + 1.1, -d / 2 + 0.55, floorY + 2.2);
+      for (let x = -w / 2 + 1; x < w / 2 - 0.8; x += 0.7) {
+        part(box(0.4, 0.35, 0.3), pick(rand, M.cloth), x, floorY + 1.3 + (rand() < 0.5 ? 0 : 0.6), -d / 2 + 0.75);
+      }
+    },
+    beds() {
+      for (const sx of [-1, 1]) {
+        for (let z = -d / 2 + 1; z < d / 2 - 1.2; z += 1.4) {
+          solid(box(1.9, 0.45, 1), M.wood, sx * (w / 2 - 1.3), floorY + 0.225, z, floorY + 0.55);
+          part(box(1.5, 0.12, 0.9), M.linen, sx * (w / 2 - 1.4), floorY + 0.5, z);
+          part(box(0.35, 0.15, 0.7), M.linen, sx * (w / 2 - 0.55), floorY + 0.55, z);
+        }
+      }
+    },
+    tavern() {
+      solid(box(w * 0.6, 1.1, 0.7), M.woodDark, 0, floorY + 0.55, -d / 2 + 1.4, floorY + 1.1);
+      for (const [x, z] of [[-w / 4, 0.3], [w / 4, 0.3], [-w / 4, -1.4], [w / 4, -1.4]]) {
+        solid(box(1.4, 0.1, 1.4), M.wood, x, floorY + 0.85, z, floorY + 0.9);
+        part(box(0.2, 0.8, 0.2), M.woodDark, x, floorY + 0.4, z);
+      }
+      for (let i = 0; i < 3; i++) part(new THREE.CylinderGeometry(0.4, 0.4, 0.9, 10), M.wood, -w / 2 + 0.8, floorY + 0.45, -d / 2 + 0.8 + i * 0.9);
+    },
+    forge() {
+      solid(box(1.6, 1, 1.4), M.stone, -w / 2 + 1.3, floorY + 0.5, -d / 2 + 1.2, floorY + 1);
+      part(box(1.2, 0.1, 1), M.flame, -w / 2 + 1.3, floorY + 1.02, -d / 2 + 1.2);
+      solid(new THREE.CylinderGeometry(0.35, 0.4, 0.5, 8), M.woodDark, 1, floorY + 0.25, -0.6, floorY + 0.75);
+      part(box(0.9, 0.3, 0.4), M.iron, 1, floorY + 0.65, -0.6);
+    },
+    books() {
+      for (const sx of [-1, 1]) {
+        solid(box(0.5, 2.6, d - 1.6), M.woodDark, sx * (w / 2 - 0.6), floorY + 1.3, -0.2, floorY + 2.6);
+        for (let y = 0.5; y < 2.5; y += 0.6) {
+          part(box(0.1, 0.4, d - 1.8), pick(rand, M.cloth), sx * (w / 2 - 0.88), floorY + y, -0.2);
+        }
+      }
+      solid(box(2, 0.1, 1), M.wood, 0, floorY + 0.85, -d / 2 + 1.5, floorY + 0.9);
+    },
+  };
+  inside[spec.inside]?.();
+
+  return { obj: g, boxes, part, solid, top, BASE };
+}
+
+function buildBank(rand) {
+  const w = 11;
+  const d = 7;
+  const bank = buildBuilding(rand, {
+    name: 'BANK', sign: false, w, d, h: 7, door: 2.8, doorH: 4, base: 0.75, wall: M.bankStone, roof: M.slate,
+  });
+  const { part, solid, boxes, top, BASE } = bank;
+  const front = d / 2;
+
+  solid(box(w + 0.5, BASE + 1, 2.6), M.bankStone, 0, (BASE - 1) / 2, front + 1.55, BASE);
+  solid(box(w + 0.5, 1.5, 0.6), M.bankStone, 0, -0.25, front + 3.15, 0.5);
+  solid(box(w + 0.5, 1.25, 0.6), M.bankStone, 0, -0.375, front + 3.75, 0.25);
+  for (const x of [-4.7, -3.3, -1.9, 1.9, 3.3, 4.7]) {
+    part(new THREE.CylinderGeometry(0.35, 0.38, 7, 12), M.bankStone, x, BASE + 3.5, front + 2.3);
+    part(box(0.9, 0.3, 0.9), M.bankStone, x, BASE + 0.15, front + 2.3);
+    part(box(0.9, 0.3, 0.9), M.bankStone, x, top - 0.15, front + 2.3);
+    boxes.push({ x, z: front + 2.3, hx: 0.4, hz: 0.4, y0: -2, y1: top });
+  }
+  part(box(w + 0.5, 0.7, 2.9), M.bankStone, 0, top + 0.35, front + 1.3);
+  boxes.push({ x: 0, z: front + 1.3, hx: w / 2 + 0.25, hz: 1.45, y0: top, y1: top + 0.7 });
+  part(box(w + 0.7, 0.2, 0.2), M.gold, 0, top + 0.75, front + 2.75);
+  const pediment = new THREE.ExtrudeGeometry(
+    new THREE.Shape([new THREE.Vector2(-(w + 0.5) / 2, 0), new THREE.Vector2((w + 0.5) / 2, 0), new THREE.Vector2(0, 1.8)]),
+    { depth: 0.5, bevelEnabled: false },
+  );
+  part(pediment, M.bankStone, 0, top + 0.7, front + 2.25);
+  const coin = part(new THREE.CylinderGeometry(0.55, 0.55, 0.1, 16), M.gold, 0, top + 1.35, front + 2.8);
+  coin.rotation.x = Math.PI / 2;
+  part(box(4.8, 0.6, 0.1), signMaterial('BANK', 4.8, 0.6, { bg: '#3a3328', edge: '#e8c25a', text: '#e8c25a' }), 0, top + 0.35, front + 2.8);
+
+  solid(box(w - 2.6, 1.2, 0.6), M.woodDark, 0, BASE + 0.6, -0.4, BASE + 1.2);
+  for (let i = 0; i < 4; i++) part(box(0.08, 1.2, 0.08), M.gold, -w / 2 + 1.6 + (i * (w - 3.2)) / 3, BASE + 1.8, -0.4);
+  const vault = part(new THREE.CylinderGeometry(1.3, 1.3, 0.25, 20), M.iron, 0, BASE + 1.9, -d / 2 + 0.42);
+  vault.rotation.x = Math.PI / 2;
+  const ring = part(new THREE.CylinderGeometry(1.45, 1.45, 0.12, 20), M.gold, 0, BASE + 1.9, -d / 2 + 0.33);
+  ring.rotation.x = Math.PI / 2;
+  const wheel = part(new THREE.CylinderGeometry(0.35, 0.35, 0.2, 8), M.gold, 0, BASE + 1.9, -d / 2 + 0.6);
+  wheel.rotation.x = Math.PI / 2;
+  return bank;
 }
 
 function makeBarrel() {
@@ -532,10 +719,11 @@ function placeProp(batch, rand, u, v, level) {
   addCollider(obj.position.clone(), r, top);
 }
 
-function tryHouse(batch, rand, u, v, fu, fv, size, level) {
-  const { w, d, h } = size;
+function tryHouse(batch, rand, u, v, fu, fv, spec, level) {
+  const { w, d } = spec;
   if (!spotIsFree(u, v, fu, fv, w, d, level)) return false;
-  const house = buildHouse(rand, w, d, h);
+  const house = buildBuilding(rand, spec);
+  if (spec.name) placedBuildings.push(spec.name);
   placeLocal(house.obj, u, v, fu, fv);
   batch.add(house.obj);
   addBoxesFrom(house.obj, house.boxes);
@@ -550,7 +738,20 @@ function tryHouse(batch, rand, u, v, fu, fv, size, level) {
   return true;
 }
 
+export const placedBuildings = [];
+const inShopDistrict = (t) => Math.abs(Math.atan2(Math.sin(t - SHIP_ANGLE), Math.cos(t - SHIP_ANGLE))) < 1.3;
+
 function buildHouses(batch, rand) {
+  const queue = [...SHOP_TYPES];
+  let extra = 0;
+  const choose = (district) => (district ? queue[0] ?? MORE_SHOPS[extra % MORE_SHOPS.length] : pick(rand, HOUSE_SIZES));
+  const settle = (spec, placed) => {
+    if (!spec.name) return;
+    if (queue[0] !== spec) extra++;
+    else if (placed) queue.shift();
+    else queue.push(queue.shift());
+  };
+
   const rows = [
     { radius: (d) => () => RING0 + 1.8 + SETBACK + d / 2, facing: -1, level: 0 },
     { radius: (d) => () => RING0 - 1.8 - SETBACK - d / 2, facing: 1, level: 0 },
@@ -560,29 +761,31 @@ function buildHouses(batch, rand) {
   for (const row of rows) {
     let t = rand();
     while (t < Math.PI * 2 + 0.5) {
-      const size = pick(rand, HOUSE_SIZES);
-      const r = row.radius(size.d)(t);
-      const placed = tryHouse(batch, rand, r * Math.cos(t), r * Math.sin(t), row.facing * Math.cos(t), row.facing * Math.sin(t), size, row.level);
-      t += (placed ? size.w + 2.5 : 1.5) / r;
+      const spec = choose(row.level === 0 && inShopDistrict(t));
+      const r = row.radius(spec.d)(t);
+      const placed = tryHouse(batch, rand, r * Math.cos(t), r * Math.sin(t), row.facing * Math.cos(t), row.facing * Math.sin(t), spec, row.level);
+      settle(spec, placed);
+      t += (placed ? spec.w + 2.5 : 1.5) / r;
     }
   }
 
   const c = LEVELS[1].center;
   for (let t = rand(); t < Math.PI * 2 + 0.5;) {
-    const size = pick(rand, HOUSE_SIZES);
-    const r = LEVELS[1].radius(t) + LANE_OUT + 1.2 + SETBACK + size.d / 2;
-    const placed = tryHouse(batch, rand, c.u + r * Math.cos(t), c.v + r * Math.sin(t), -Math.cos(t), -Math.sin(t), size, LEVEL_H);
-    t += (placed ? size.w + 2.5 : 1.5) / r;
+    const spec = pick(rand, HOUSE_SIZES);
+    const r = LEVELS[1].radius(t) + LANE_OUT + 1.2 + SETBACK + spec.d / 2;
+    const placed = tryHouse(batch, rand, c.u + r * Math.cos(t), c.v + r * Math.sin(t), -Math.cos(t), -Math.sin(t), spec, LEVEL_H);
+    t += (placed ? spec.w + 2.5 : 1.5) / r;
   }
 
   LEVELS[0].stairs.forEach((s) => {
+    const district = inShopDistrict(Math.atan2(s.axis.v, s.axis.u));
     for (let along = RING0 + 6; along < RING_OUT; along += 6) {
       for (const side of [-1, 1]) {
-        const size = pick(rand, HOUSE_SIZES);
-        const off = 1.6 + SETBACK + size.d / 2;
+        const spec = choose(district);
+        const off = 1.6 + SETBACK + spec.d / 2;
         const u = s.axis.u * along - side * s.axis.v * off;
         const v = s.axis.v * along + side * s.axis.u * off;
-        tryHouse(batch, rand, u, v, side * s.axis.v, -side * s.axis.u, size, 0);
+        settle(spec, tryHouse(batch, rand, u, v, side * s.axis.v, -side * s.axis.u, spec, 0));
       }
     }
   });
@@ -590,26 +793,27 @@ function buildHouses(batch, rand) {
 
 function buildPlaza(batch, rand) {
   const c = LEVELS[1].center;
-  const top = 2 * LEVEL_H;
+  const facing = SHIP_ANGLE + 0.4;
+  const fu = Math.cos(facing);
+  const fv = Math.sin(facing);
   const at = (angle, dist) => ({ u: c.u + Math.cos(angle) * dist, v: c.v + Math.sin(angle) * dist, fu: -Math.cos(angle), fv: -Math.sin(angle) });
 
-  const well = placeLocal(makeWell(), c.u, c.v, 1, 0);
+  const bank = buildBank(rand);
+  placeLocal(bank.obj, c.u - fu, c.v - fv, fu, fv);
+  batch.add(bank.obj);
+  addBoxesFrom(bank.obj, bank.boxes);
+  houseSpots.push(footprint(c.u + fu * 0.8, c.v + fv * 0.8, fu, fv, 11.5, 10.6));
+  placedBuildings.push('BANK');
+
+  const behind = at(facing + Math.PI, 8.5);
+  const well = placeLocal(makeWell(), behind.u, behind.v, behind.fu, behind.fv);
   batch.add(well);
   addCollider(well.position.clone(), 1.3, 0.9);
-  houseSpots.push(footprint(c.u, c.v, 1, 0, 2.6, 2.6));
-  for (const a of [0.95, 1.95, 5.15, 6.05]) {
-    const spot = at(SHIP_ANGLE + a, 3.6);
+  for (const a of [-0.6, 0.6]) {
+    const spot = at(facing + Math.PI + a, 8.3);
     const stall = placeLocal(makeStall(rand), spot.u, spot.v, spot.fu, spot.fv);
     batch.add(stall);
     addBoxesFrom(stall, [{ x: 0, z: 0.4, hx: 1.2, hz: 0.4, y0: -2, y1: 0.9 }]);
-    houseSpots.push(footprint(spot.u, spot.v, spot.fu, spot.fv, 2.8, 2));
-  }
-
-  const hall = at(SHIP_ANGLE + Math.PI, 5.8);
-  tryHouse(batch, rand, hall.u, hall.v, hall.fu, hall.fv, { w: 8.5, d: 5.5, h: 4.2 }, top);
-  for (const a of [1.45, 5.6]) {
-    const spot = at(SHIP_ANGLE + a, 6.8);
-    tryHouse(batch, rand, spot.u, spot.v, spot.fu, spot.fv, { w: 5, d: 4.5, h: 3 }, top);
   }
 }
 
