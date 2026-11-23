@@ -72,6 +72,11 @@
 - **Aliens, jobs, talking, bag, day/night (2026-11-23)** - see `docs/aliens-setup.md`
   - 37 aliens with daily plans; press E to talk and click options; 5 jobs the player can do for pay from alien managers; bag (B) with eating, drinking and reading; library cards and borrowed books; day/night sky with glowing windows.
 
+- **Smaller planet (2026-11-23)**
+  - Planet radius 80 -> 60 (`RADIUS` in `src/geo.js`); the town keeps its size, so the wild land outside town is about 2.5x smaller. Town moved to sit opposite the ship (`TOWN_DIR` in `src/town.js`); about 50 steps of wild land between the ship and town.
+  - Smaller than 60 the Bakery stops fitting, so 60 is the smallest size that keeps every must-have building at full (10x) size. Gap-filler shops (Herbalist, Shoemaker) no longer fit.
+  - Building spots are now planned widest-first into the snuggest gap; streets around the plaza stop exactly at their corners. 85 trees, 55 rocks, 24 crystal clusters outside town.
+
 ## Untested by a human
 - How the controls *feel* (speed, jump height, mouse sensitivity).
 - Camera can go inside trees or through house walls when it is right behind one.

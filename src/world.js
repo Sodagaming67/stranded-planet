@@ -229,9 +229,9 @@ function scatterDecorations(things, rand) {
       n++;
     }
   }
-  scatter(220, makeTree, 0.1);
-  scatter(140, makeRock, 0.15);
-  scatter(60, makeCrystals, 0.1);
+  scatter(85, makeTree, 0.1);
+  scatter(55, makeRock, 0.15);
+  scatter(24, makeCrystals, 0.1);
   batch.build(things);
 }
 

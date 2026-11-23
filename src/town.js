@@ -7,7 +7,7 @@ import { furnish, CEILING } from './interiors.js';
 import { SERVICES } from './services.js';
 
 // The town sits on the far side of the planet from the ship.
-export const TOWN_DIR = new THREE.Vector3(0, Math.cos(2.6), Math.sin(2.6));
+export const TOWN_DIR = new THREE.Vector3(0, Math.cos(2.75), Math.sin(2.75));
 export const TOWN_CORE = 88;
 export const TOWN_EDGE = 98;
 
@@ -76,8 +76,8 @@ const cornerY = (x, other = x) => Math.atan(Math.tan(other / RADIUS) * Math.cos(
 
 export const townRoads = [];
 for (const axis of AXES) {
-  const inner = cornerY(INNER_ST) + INNER_HALF;
-  const outer = cornerY(OUTER_ST) + OUTER_HALF;
+  const inner = cornerY(INNER_ST);
+  const outer = cornerY(OUTER_ST);
   townRoads.push({ kind: 'ring', axis, x: INNER_ST, from: -inner, to: inner, half: INNER_HALF });
   townRoads.push({ kind: 'ring', axis, x: OUTER_ST, from: -outer, to: outer, half: OUTER_HALF });
   const end = axis.a === T1 ? TOWN_EDGE + 3 : OUTER_ST + 8;
@@ -964,48 +964,60 @@ function placeProp(batch, rand, dir) {
 }
 
 // Fills the four sides of the square with buildings standing wall to wall.
+// First every must-have building is given a spot (widest first, into the snuggest gap), then gaps get extra shops.
 function buildRows(batch, rand) {
-  const queue = [...SHOP_TYPES];
   const usedExtras = new Set();
-  const narrowest = Math.min(...EXTRA_SHOPS.map((s) => s.w));
-
+  const halves = [];
   AXES.forEach((axis, i) => {
     const reach = i % 2 === 0 ? cornerY(FRONT, OUTER_ST - OUTER_HALF) - 0.5 : cornerY(FRONT) - 0.3;
-    for (const sign of [1, -1]) {
-      let y = CROSS_HALF + 0.4;
-      while (reach - y >= narrowest) {
-        const room = reach - y;
-        const candidates = [
-          ...queue,
-          ...EXTRA_SHOPS.filter((s) => !usedExtras.has(s)),
-          ...EXTRA_SHOPS.filter((s) => usedExtras.has(s)),
-        ].filter((s) => s.w <= room);
-        let placed = null;
-        for (const spec of candidates) {
-          for (const shrink of [1, 0.85, 0.7]) {
-            const d = Math.max(11, spec.d * shrink);
-            const spot = rowSpot(axis, sign * (y + spec.w / 2), spec.w, d);
-            if (spot) {
-              placed = { spec: { ...spec, d }, spot };
-              break;
-            }
-          }
-          if (placed) break;
-        }
-        if (!placed) {
-          y += 2;
-          continue;
-        }
-        const { spec, spot } = placed;
-        const original = queue.find((s) => s.name === spec.name);
-        if (original) queue.splice(queue.indexOf(original), 1);
-        else usedExtras.add(EXTRA_SHOPS.find((s) => s.name === spec.name));
-        placeBuilding(batch, rand, spot, spec);
-        if (rand() < 0.7) placeProp(batch, rand, townPoint(axis, FRONT - 0.9, sign * (y + 0.9)));
-        y += spec.w;
-      }
-    }
+    for (const sign of [1, -1]) halves.push({ axis, sign, reach, room: reach - CROSS_HALF - 0.4, planned: [] });
   });
+  for (const spec of [...SHOP_TYPES].sort((a, b) => b.w - a.w)) {
+    const half = halves.filter((h) => h.room >= spec.w).sort((a, b) => a.room - b.room)[0];
+    if (!half) continue;
+    half.planned.push(spec);
+    half.room -= spec.w;
+  }
+
+  const tryPlace = (half, y, spec) => {
+    for (const shrink of [1, 0.85, 0.7]) {
+      const d = Math.max(11, spec.d * shrink);
+      const spot = rowSpot(half.axis, half.sign * (y + spec.w / 2), spec.w, d);
+      if (spot) return { spec: { ...spec, d }, spot };
+    }
+    return null;
+  };
+
+  for (const half of halves) {
+    let y = CROSS_HALF + 0.4;
+    const queue = [...half.planned];
+    const narrowest = Math.min(...EXTRA_SHOPS.map((s) => s.w));
+    while (half.reach - y >= narrowest || queue.length) {
+      const room = half.reach - y;
+      const candidates = [
+        ...queue.filter((s) => s.w <= room),
+        ...EXTRA_SHOPS.filter((s) => !usedExtras.has(s) && s.w <= room - queue.reduce((sum, q) => sum + q.w, 0)),
+        ...EXTRA_SHOPS.filter((s) => usedExtras.has(s) && s.w <= room - queue.reduce((sum, q) => sum + q.w, 0)),
+      ];
+      let placed = null;
+      for (const spec of candidates) {
+        placed = tryPlace(half, y, spec);
+        if (placed) break;
+      }
+      if (!placed) {
+        if (room < narrowest) break;
+        y += 2;
+        continue;
+      }
+      const { spec, spot } = placed;
+      const planned = queue.find((s) => s.name === spec.name);
+      if (planned) queue.splice(queue.indexOf(planned), 1);
+      else usedExtras.add(EXTRA_SHOPS.find((s) => s.name === spec.name));
+      placeBuilding(batch, rand, spot, spec);
+      if (rand() < 0.7) placeProp(batch, rand, townPoint(half.axis, FRONT - 0.9, half.sign * (y + 0.9)));
+      y += spec.w;
+    }
+  }
 }
 
 function buildLanterns(batch) {

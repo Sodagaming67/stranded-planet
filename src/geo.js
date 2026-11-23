@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
-export const RADIUS = 80;
+export const RADIUS = 60;
 export const SHIP_DIR = new THREE.Vector3(0, 1, 0);
 export const colliders = [];
 
